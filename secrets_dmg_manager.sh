@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# secrets_dmg_manager.sh - V 1.0.1; by Kris Coppieters (kris@rorohiko.com)
+
+# 20250813 - V 1.0.1. Fixed errors in the update function
+# 20250813 - V 1.0.0. First release
+
 # Secrets DMG Manager
 # Usage: ./secrets_dmg_manager.sh [create|mount|unmount|update|status] [log_level]
 #
@@ -337,73 +342,92 @@ update_dmg() {
             break
         fi
         
-        # Mount for update
-        if ! mount_dmg >/dev/null 2>&1; then
-            log_error "Failed to mount DMG for update"
+        # Get password from keychain (same as mount_dmg)
+        local dmg_password
+        if ! dmg_password=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null); then
+            log_error "Password not found in keychain. DMG may not be encrypted or keychain access denied."
             break
         fi
         
-        log_info "DMG mounted for update at: $MOUNT_POINT"
-        log_info "Make your changes to files in: $MOUNT_POINT"
-        log_info "Press Enter when done to create updated DMG..."
-        read -r
+        # Clean up any existing mounts first
+        unmount_dmg >/dev/null 2>&1 || true
         
-        # Create backup
-        local backup_file="${DMG_FILE}.backup.$(date +%s)"
-        if ! cp "$DMG_FILE" "$backup_file"; then
-            log_error "Failed to create backup"
-            unmount_dmg >/dev/null 2>&1
-            break
-        fi
+        # Mount the existing DMG (we know this works)
+        local project_name=$(basename "$(pwd)")
+        MOUNT_POINT="${MOUNT_BASE}/${DMG_NAME}_${project_name}"
+        mkdir -p "$MOUNT_POINT"
         
-        # Create temporary directory for new DMG contents
-        local temp_dir=$(mktemp -d)
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to create temporary directory"
-            unmount_dmg >/dev/null 2>&1
-            break
-        fi
-        
-        # Copy updated contents
-        if ! cp -R "$MOUNT_POINT"/* "$temp_dir/" 2>/dev/null; then
-            log_error "Failed to copy updated contents"
-            rm -rf "$temp_dir"
-            unmount_dmg >/dev/null 2>&1
-            break
-        fi
-        
-        # Normalize timestamps to minimize git changes
-        find "$temp_dir" -exec touch -t 202301010000 {} \;
-        
-        # Unmount old DMG
-        if ! unmount_dmg >/dev/null 2>&1; then
-            log_error "Failed to unmount DMG"
-            rm -rf "$temp_dir"
-            break
-        fi
-        
-        # Remove old DMG and create new one
-        rm "$DMG_FILE"
-        
-        if hdiutil create \
-            -srcfolder "$temp_dir" \
-            -format UDZO \
-            -volname "$VOLUME_NAME" \
-            -size "$DMG_SIZE" \
-            -ov \
-            -quiet \
-            "$DMG_FILE"; then
+        log_info "Mounting existing DMG..."
+        if echo "$dmg_password" | hdiutil attach "$DMG_FILE" -stdinpass -mountpoint "$MOUNT_POINT" -quiet; then
             
-            log_info "DMG updated successfully"
-            rm "$backup_file"
-            retVal=0
+            # Copy contents to temp directory
+            local temp_dir=$(mktemp -d)
+            cp -R "$MOUNT_POINT"/* "$temp_dir/" 2>/dev/null || true
+            
+            # Unmount the original
+            hdiutil detach "$MOUNT_POINT" -quiet
+            
+            # Open temp directory in Finder
+            open "$temp_dir"
+            
+            # ALWAYS show prompts regardless of log level
+            echo ""
+            echo "================================================================"
+            echo "DMG contents opened in Finder: $temp_dir"
+            echo "Make your changes to the files in that directory."
+            echo "Press Enter when finished to recreate the encrypted DMG..."
+            echo "================================================================"
+            read -r
+            
+            # Create backup
+            local backup_file="${DMG_FILE}.backup.$(date +%s)"
+            cp "$DMG_FILE" "$backup_file"
+            
+            # Normalize timestamps
+            find "$temp_dir" -exec touch -t 202301010000 {} \;
+            
+            # Create new encrypted DMG (hdiutil adds .dmg automatically)
+            log_info "Creating new encrypted DMG..."
+            local new_dmg_base="${DMG_FILE%%.dmg}.new"  # "secrets.new"
+            local new_dmg="${new_dmg_base}.dmg"         # "secrets.new.dmg"
+            
+            if echo "$dmg_password" | hdiutil create \
+                -srcfolder "$temp_dir" \
+                -format UDZO \
+                -encryption AES-256 \
+                -stdinpass \
+                -volname "$VOLUME_NAME" \
+                -size "$DMG_SIZE" \
+                -ov \
+                "$new_dmg_base"; then
+                
+                # Verify the new DMG was actually created (hdiutil adds .dmg)
+                if [[ -f "$new_dmg" ]]; then
+                    # Replace original with new version
+                    rm "$DMG_FILE"
+                    mv "$new_dmg" "$DMG_FILE"
+                    rm "$backup_file"
+                    
+                    # Normalize timestamp
+                    touch -t 202301010000 "$DMG_FILE"
+                    
+                    log_info "DMG updated successfully"
+                    retVal=0
+                else
+                    log_error "New DMG file was not created: $new_dmg"
+                    mv "$backup_file" "$DMG_FILE"
+                fi
+            else
+                log_error "Failed to create new encrypted DMG, restoring backup"
+                mv "$backup_file" "$DMG_FILE"
+            fi
+            
+            # Cleanup
+            rm -rf "$temp_dir"
+            rmdir "$MOUNT_POINT" 2>/dev/null || true
         else
-            log_error "Failed to create updated DMG, restoring backup"
-            mv "$backup_file" "$DMG_FILE"
+            log_error "Failed to mount existing DMG"
         fi
-        
-        # Cleanup
-        rm -rf "$temp_dir"
         break
     done
     

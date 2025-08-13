@@ -15,10 +15,10 @@ team distribution, and CI/CD integration.
 
 The manual emphasizes the tool's main value propositions:
 
-Secure storage of sensitive build materials
-Consistent integration with build scripts
-Safe version control of encrypted secrets
-Team collaboration without compromising security
+- Secure storage of sensitive build materials
+- Consistent integration with build scripts
+- Safe version control of encrypted secrets
+- Team collaboration without compromising security
 
 ## Why This Tool Exists
 

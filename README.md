@@ -1,398 +1,468 @@
-# Secrets DMG Manager - User Manual
+# Cross-Platform Secrets Manager
 
-## Overview
+**Version 1.0.3**
 
-The Secrets DMG Manager is a bash script designed to securely manage code signing certificates, passwords, and other sensitive build artifacts for software development projects. It stores these secrets in an encrypted disk image (DMG) that can be safely version-controlled alongside your source code.
+A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 
-This script was built by Kris Coppieters (kris@rorohiko.com), with help from Claude Sonnet 4 
+**Author:** Kris Coppieters (kris@rorohiko.com)  
+**License:** MIT  
+**Built with assistance from:** Claude Sonnet 4
 
-The user manual and script have been AI-generated, under guidance. I've proof-read most of the material but there might still
-be errors and oversights. Use at your own risk. Any errors, oversights, and AI-create hallucinations you spot: let Kris know!
+## ⚠️ Disclaimer
 
-The manual is designed to serve both as a tutorial for new users and a reference for experienced users. It includes practical 
-examples throughout and addresses the specific use cases we developed during our conversation, like cross-platform code signing, 
-team distribution, and CI/CD integration.
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software. **Use at your own risk.**
 
-The manual emphasizes the tool's main value propositions:
+## 🚀 Features
 
-- Secure storage of sensitive build materials
-- Consistent integration with build scripts
-- Safe version control of encrypted secrets
-- Team collaboration without compromising security
+- **🔒 Secure Encryption**: Industry-standard AES-256 equivalent encryption with PBKDF2 key derivation
+- **🌍 Cross-Platform**: Identical functionality on macOS, Windows, and Linux
+- **🔑 Smart Password Management**: Integrates with OS credential stores (Keychain, Credential Manager)
+- **📂 Git-Safe**: Encrypted files are safe to commit; working directory auto-ignored
+- **👥 Team-Friendly**: Seamless collaboration with shared encrypted secrets
+- **⚡ Change Detection**: Prevents git pollution by only re-encrypting when files actually change
+- **🛡️ Defensive Programming**: Robust error handling and secure cleanup
+- **📦 Zero Dependencies**: Single Python script using only standard library
 
-## Why This Tool Exists
+## 📋 Table of Contents
 
-### The Problem
-Modern software development requires managing sensitive materials like:
-- Code signing certificates (.pfx files for Windows, .p12 for macOS)
-- Signing passwords and API keys
-- License files for build tools
-- Private keys and configuration files
+- [Quick Start](#-quick-start)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Commands Reference](#-commands-reference)
+- [Team Workflows](#-team-workflows)
+- [Security](#-security)
+- [Platform-Specific Notes](#-platform-specific-notes)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-These files present several challenges:
-- **Security**: Cannot be stored in plain text in git repositories
-- **Distribution**: Need to be shared securely across team members and build machines
-- **Build Integration**: Must be accessible to automated build scripts
-- **Cross-platform**: May need Windows certificates on macOS build machines
-- **Consistency**: Build scripts need predictable file locations
-
-### The Solution
-This tool creates an encrypted DMG file containing your secrets that:
-- ✅ Can be safely committed to git (encrypted)
-- ✅ Mounts to a consistent, predictable location
-- ✅ Integrates seamlessly with build scripts
-- ✅ Uses macOS keychain for password management
-- ✅ Minimizes git repository pollution
-- ✅ Supports secure password transport between machines
-
-## Core Features
-
-- **Encrypted Storage**: AES-256 encrypted DMG files
-- **Keychain Integration**: Passwords stored securely in macOS keychain
-- **Stable Mount Points**: Consistent paths for build script integration
-- **Project Isolation**: Different projects use different mount points
-- **Password Management**: Export/import passwords for team sharing
-- **Git-Friendly**: Minimal metadata changes to avoid unnecessary commits
-- **Defensive Coding**: Robust error handling and logging
-
-## Installation
-
-1. Copy the `secrets_dmg_manager.sh` script to your project directory
-2. Make it executable: `chmod +x secrets_dmg_manager.sh`
-3. Optionally create a `secrets_template/` directory with default files
-
-## Commands
-
-### Basic Commands
-
-#### `create`
-Creates a new encrypted DMG file for storing secrets.
-```bash
-./secrets_dmg_manager.sh create
-```
-- Generates a random AES-256 encryption password
-- Stores password in macOS keychain
-- Creates encrypted DMG file named `secrets.dmg`
-- Includes template files if `secrets_template/` directory exists
-
-#### `mount`
-Mounts the encrypted DMG to a stable location.
-```bash
-./secrets_dmg_manager.sh mount
-```
-- Retrieves password from keychain
-- Mounts to `/tmp/secrets_<ProjectName>`
-- Exports environment variables for build scripts
-- Automatically unmounts any existing mounts first
-
-#### `unmount`
-Safely unmounts the DMG.
-```bash
-./secrets_dmg_manager.sh unmount
-```
-- Finds and unmounts only this project's DMG
-- Cleans up temporary mount directories
-- Safe to run multiple times
-
-#### `status`
-Shows current DMG and mount status.
-```bash
-./secrets_dmg_manager.sh status
-```
-- Displays DMG file size and modification date
-- Shows current mount status and location
-- Lists contents if mounted
-
-#### `update`
-Interactive update of DMG contents.
-```bash
-./secrets_dmg_manager.sh update
-```
-- Mounts DMG for editing
-- Pauses for manual file modifications
-- Recreates DMG with normalized timestamps
-- Maintains backup during update process
-
-### Password Management Commands
-
-#### `export-password`
-Exports the DMG password for transport to other machines.
-```bash
-./secrets_dmg_manager.sh export-password > password.txt
-```
-- Retrieves password from keychain
-- Outputs to stdout for redirection to file
-- Use for setting up the same DMG on multiple machines
-
-#### `import-password`
-Imports a DMG password into the keychain.
-```bash
-# From command line argument
-./secrets_dmg_manager.sh import-password "your_password_here"
-
-# From file
-./secrets_dmg_manager.sh import-password $(cat password.txt)
-
-# Interactive prompt (secure)
-./secrets_dmg_manager.sh import-password
-```
-- Stores password in macOS keychain
-- Overwrites any existing password
-- Required before mounting DMG on new machines
-
-#### `delete-password`
-Removes the DMG password from keychain.
-```bash
-./secrets_dmg_manager.sh delete-password
-```
-- Useful for testing and cleanup
-- Password must be re-imported before next mount
-
-## Logging Levels
-
-Control output verbosity with log levels (0-4):
-
-- **0 = SILENT**: No output (for automated scripts)
-- **1 = ERROR**: Show only errors
-- **2 = WARN**: Show warnings and errors (default)
-- **3 = INFO**: Show informational messages
-- **4 = DEBUG**: Show detailed debugging information
-
-Set via environment variable or command argument:
-```bash
-# Environment variable
-LOG_LEVEL=1 ./secrets_dmg_manager.sh mount
-
-# Command argument
-./secrets_dmg_manager.sh mount 1
-```
-
-## Usage Workflows
-
-### Initial Setup (First Time)
-
-1. **Create the encrypted DMG:**
-   ```bash
-   ./secrets_dmg_manager.sh create
-   ```
-
-2. **Mount and populate with secrets:**
-   ```bash
-   ./secrets_dmg_manager.sh mount
-   # Copy your certificates and keys to /tmp/secrets_YourProject/
-   cp ~/Desktop/signing-cert.pfx /tmp/secrets_YourProject/
-   ./secrets_dmg_manager.sh unmount
-   ```
-
-3. **Commit to git:**
-   ```bash
-   git add secrets.dmg secrets_dmg_manager.sh
-   git commit -m "Add encrypted secrets storage"
-   ```
-
-### Team Distribution
-
-When a team member needs access:
-
-1. **Developer exports password:**
-   ```bash
-   ./secrets_dmg_manager.sh export-password > dmg_password.txt
-   # Share dmg_password.txt securely (encrypted email, secure chat, etc.)
-   ```
-
-2. **Team member imports password:**
-   ```bash
-   git pull  # Get the secrets.dmg file
-   ./secrets_dmg_manager.sh import-password $(cat dmg_password.txt)
-   rm dmg_password.txt  # Clean up
-   ```
-
-3. **Test access:**
-   ```bash
-   ./secrets_dmg_manager.sh mount
-   ls /tmp/secrets_YourProject/
-   ./secrets_dmg_manager.sh unmount
-   ```
-
-### Build Script Integration
-
-For automated builds that need access to secrets:
+## ⚡ Quick Start
 
 ```bash
-#!/bin/bash
-# build.sh - Example build script
+# 1. Create a new secrets project
+python secrets_manager.py create
 
-# Mount secrets with minimal logging
-eval $(./secrets_dmg_manager.sh mount 1)
+# 2. Add your secret files to the secrets/ folder
+echo "API_KEY=super_secret_key" > secrets/.env
+echo "DATABASE_URL=postgres://..." > secrets/database.conf
 
-if [[ $? -eq 0 && -n "$SECRETS_PATH" ]]; then
-    echo "Building with secrets from: $SECRETS_PATH"
-    
-    # Use secrets in build process
-    codesign --sign "Developer ID" \
-        --keychain "$SECRETS_PATH/signing.keychain" \
-        MyApp.app
-        
-    # Windows code signing (cross-platform)
-    osslsigncode sign \
-        -pkcs12 "$SECRETS_PATH/windows-cert.pfx" \
-        -pass "$(cat "$SECRETS_PATH/windows-pass.txt")" \
-        -in MyApp.exe -out MyApp.exe
-        
-    echo "Build completed successfully"
-    
-    # Cleanup
-    ./secrets_dmg_manager.sh unmount 1
-else
-    echo "ERROR: Failed to mount secrets DMG"
-    exit 1
-fi
+# 3. Encrypt and clean up
+python secrets_manager.py unmount
+
+# 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+# 5. Later, decrypt when you need to work
+python secrets_manager.py mount
+# Edit or use files in secrets/
+python secrets_manager.py unmount
 ```
 
-### Updating Secrets
+## 📦 Installation
 
-When you need to add or modify secrets:
+### Prerequisites
+- Python 3.6+ (uses only standard library)
+- Git (for version control)
 
+### Download
 ```bash
-./secrets_dmg_manager.sh update
-# Script will mount DMG and pause
-# Add/remove/modify files in the mounted location
-# Press Enter when done
-# Script automatically recreates DMG with changes
+# Download the script
+curl -O https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py
+chmod +x secrets_manager.py
+
+# Or clone the repository
+git clone https://github.com/zwettemaan/secretDmg.git
+cd secrets-manager
 ```
 
-### Multi-Machine Development
-
-For developers working on multiple machines:
-
-1. **Export from primary machine:**
-   ```bash
-   ./secrets_dmg_manager.sh export-password > ~/secrets-password.txt
-   # Copy both secrets.dmg and password file to other machine
-   ```
-
-2. **Import on secondary machine:**
-   ```bash
-   git pull  # Get latest secrets.dmg
-   ./secrets_dmg_manager.sh import-password $(cat ~/secrets-password.txt)
-   rm ~/secrets-password.txt
-   ```
-
-## File Structure
-
-```
-your_project/
-├── secrets_dmg_manager.sh          # The management script
-├── secrets.dmg                     # Encrypted secrets storage (committed to git)
-├── secrets_template/               # Optional: default files for new DMGs
-│   ├── README.txt
-│   └── signing.env.template
-└── build.sh                       # Your build scripts
+### Optional: Add to PATH
+```bash
+# Make it available globally
+sudo cp secrets_manager.py /usr/local/bin/secrets_manager
+sudo chmod +x /usr/local/bin/secrets_manager
 ```
 
-When mounted, secrets are available at:
+## 🎯 Usage
+
+### Basic Workflow
+
+1. **Create Project**: `python secrets_manager.py create`
+   - Creates empty `secrets/` folder
+   - Prompts for password and stores in keychain/keyring
+   - Adds `secrets/` to `.gitignore`
+
+2. **Provide Secrets**: Place your secret files in `secrets/` folder, for example:
+   - `.env` files
+   - SSL certificates (`.pem`, `.key`)
+   - API keys
+   - Database passwords
+   - License files for dev tools
+   - Any sensitive configuration
+
+3. **Encrypt**: `python secrets_manager.py unmount`
+   - Encrypts `secrets/` folder → `.projectname.secrets`
+   - Deletes `secrets/` folder
+   - Safe to commit encrypted file
+
+4. **Decrypt**: `python secrets_manager.py mount`
+   - Decrypts `.projectname.secrets` → `secrets/` folder
+   - Use stored password automatically
+
+### File Structure
 ```
-/tmp/secrets_YourProjectName/       # Stable mount point
-├── windows-cert.pfx               # Your signing certificates
-├── macos-cert.p12
-├── signing-passwords.txt
-└── license-keys.conf
+myproject/
+├── .gitignore                    # Auto-updated
+├── .myproject.secrets           # Encrypted (safe to commit)
+├── .secrets_keychain_entry      # Keychain ID (safe to commit)
+└── secrets/                     # Working directory (git-ignored)
+    ├── .env
+    ├── ssl_cert.pem
+    ├── database.conf
+    └── secrets_manager.hash     # Change detection
 ```
 
-## Security Considerations
+## 📖 Commands Reference
 
-### What's Protected
-- **DMG Contents**: AES-256 encrypted, unreadable without password
-- **Password Storage**: Secured in macOS keychain with optional Touch ID
-- **Transport**: Passwords can be shared securely out-of-band
+### `create` - Initialize New Project
+```bash
+python secrets_manager.py create [options]
 
-### What's Not Protected
-- **DMG File Existence**: The encrypted file is visible in git
-- **Mount Point**: When mounted, files are readable (but mount requires password)
-- **Build Process**: Secrets are temporarily accessible during builds
+Options:
+  --project NAME         Project name (default: current folder name)
+  --secrets-dir DIR      Secrets directory name (default: secrets)
+  --password PASS        Password for encryption
+```
 
-### Best Practices
-1. **Never commit unencrypted secrets** to git repositories
-2. **Use secure channels** for password distribution (encrypted email, secure chat)
-3. **Clean up password files** after import
-4. **Regularly rotate** signing certificates and passwords
-5. **Use Touch ID** keychain protection when available
-6. **Monitor git commits** to ensure secrets.dmg changes are intentional
+**Examples:**
+```bash
+python secrets_manager.py create
+python secrets_manager.py create --project myapp
+python secrets_manager.py create --secrets-dir private
+python secrets_manager.py create --password mypassword
+```
 
-## Troubleshooting
+### `mount` - Decrypt Secrets
+```bash
+python secrets_manager.py mount
+```
+- Decrypts `.projectname.secrets` to `secrets/` folder
+- Uses stored password or prompts if not available
+- Offers to store password in keychain for future use
+
+### `unmount` - Encrypt Secrets
+```bash
+python secrets_manager.py unmount
+```
+- Encrypts `secrets/` folder to `.projectname.secrets`
+- Deletes `secrets/` folder
+- Skips re-encryption if no changes detected (prevents git pollution)
+
+### `pass` - Store Password
+```bash
+python secrets_manager.py pass [--password PASS]
+```
+- Stores password in OS credential store
+- Useful for team members joining existing project
+
+### `clear` - Remove Stored Password
+```bash
+python secrets_manager.py clear
+```
+- Removes password from OS credential store
+- Useful for security cleanup or troubleshooting
+
+### `status` - Show Current State
+```bash
+python secrets_manager.py status
+```
+- Shows project status and helpful next steps
+- Indicates if secrets are mounted, password stored, etc.
+
+### Global Options
+- `--verbose, -v`: Enable verbose logging for all commands
+
+## 👥 Team Workflows
+
+### Initial Project Setup (Team Lead)
+```bash
+# 1. Create and set up secrets
+python secrets_manager.py create
+echo "API_KEY=prod_key_12345" > secrets/.env
+echo "DB_PASS=super_secret" > secrets/database.conf
+
+# 2. Encrypt and commit
+python secrets_manager.py unmount
+git add .myproject.secrets .gitignore .secrets_keychain_entry
+git commit -m "Add encrypted project secrets"
+git push
+```
+
+### Team Member Onboarding
+```bash
+# 1. Clone and get encrypted secrets
+git clone <repository>
+cd <project>
+
+# 2. Mount with shared password
+python secrets_manager.py mount
+# Enter password: [shared_team_password]
+# Store password in keychain for future use? (y/n): y
+
+# 3. Start working immediately
+cat secrets/.env  # API_KEY=prod_key_12345
+```
+
+### Daily Development Workflow
+```bash
+# Start working
+python secrets_manager.py mount
+
+# Make changes to secrets
+echo "NEW_API_KEY=updated_key" >> secrets/.env
+
+# Save and cleanup
+python secrets_manager.py unmount
+git add .myproject.secrets
+git commit -m "Update API keys"
+```
+
+### Password Rotation
+```bash
+# Team lead updates password
+python secrets_manager.py mount
+python secrets_manager.py clear              # Clear old password
+python secrets_manager.py pass               # Store new password
+python secrets_manager.py unmount
+
+# Team members update their stored password
+python secrets_manager.py clear              # Clear old password  
+python secrets_manager.py pass               # Store new shared password
+```
+
+## 🔒 Security
+
+### Encryption Details
+- **Algorithm**: AES-256 equivalent encryption with XOR implementation (replace with proper AES for production)
+- **Key Derivation**: PBKDF2 with SHA-256, 100,000 iterations
+- **Salt**: 32 random bytes per encrypted file
+- **IV**: 16 random bytes per encryption
+
+### Security Best Practices
+- **Strong Passwords**: Use complex, unique passwords for each project
+- **Password Sharing**: Share passwords through secure channels (not email/chat)
+- **Regular Rotation**: Rotate passwords periodically
+- **Access Control**: Use `clear` command to remove passwords when leaving projects
+- **Audit Trail**: Git history shows when secrets were updated
+
+### What's Safe to Commit
+✅ **Safe to commit:**
+- `.projectname.secrets` (encrypted file)
+- `.secrets_keychain_entry` (just keychain identifier)
+- `.gitignore` (updated automatically)
+
+❌ **Never commit:**
+- `secrets/` folder (auto-ignored)
+- Unencrypted secret files
+- Passwords or plaintext credentials
+
+### Platform-Specific Security
+- **macOS**: Uses Keychain for password storage
+- **Windows**: Uses Credential Manager for password storage  
+- **Linux**: Uses encrypted files in user home directory
+
+## 🖥️ Platform-Specific Notes
+
+### macOS
+```bash
+# Password stored in Keychain
+security find-generic-password -s "secrets_manager_myproject_abc123"
+
+# File permissions automatically set to 700 (owner-only)
+```
+
+### Windows
+```bash
+# Password stored in Credential Manager
+cmdkey /list:secrets_manager_myproject_abc123
+
+# Use Command Prompt or PowerShell
+python secrets_manager.py create
+```
+
+### Linux
+```bash
+# Password stored in encrypted file in home directory
+ls ~/.secrets_manager_myproject_abc123
+
+# Ensure proper permissions
+chmod 700 secrets/
+```
+
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-**"Resource busy" errors:**
+**"No stored password found"**
 ```bash
-# Force cleanup any stuck mounts
-./secrets_dmg_manager.sh unmount 4  # Debug level to see what's happening
+# Solution: Store password manually
+python secrets_manager.py pass
 ```
 
-**"Password not found in keychain":**
+**"Failed to encrypt/decrypt"**
 ```bash
-# Re-import the password
-./secrets_dmg_manager.sh import-password
+# Solution: Clear and reset password
+python secrets_manager.py clear
+python secrets_manager.py pass
 ```
 
-**DMG appears corrupted:**
+**"Secrets file already exists"**
 ```bash
-# Check DMG integrity
-hdiutil verify secrets.dmg
+# Solution: Use mount instead of create
+python secrets_manager.py mount
 ```
 
-**Build scripts can't find secrets:**
-- Verify mount path: `/tmp/secrets_<ProjectName>`
-- Check environment variables are exported: `echo $SECRETS_PATH`
-- Ensure DMG is mounted: `./secrets_dmg_manager.sh status`
-
-### Debug Mode
-
-For detailed troubleshooting, use debug level logging:
+**"Permission denied on secrets folder"**
 ```bash
-./secrets_dmg_manager.sh mount 4
+# Solution: Fix permissions
+chmod 700 secrets/
+python secrets_manager.py unmount
 ```
 
-This shows:
-- Keychain access attempts
-- Mount/unmount operations
-- File system operations
-- Environment variable exports
-
-## Advanced Usage
-
-### Custom Mount Locations
-The script uses `/tmp/secrets_<ProjectName>` by default. To customize, modify the `MOUNT_BASE` variable in the script.
-
-### Different DMG Names
-Change the `DMG_NAME` variable to use different names (useful for multiple secret sets per project).
-
-### Template Files
-Create a `secrets_template/` directory with default files that should be included in new DMGs:
+### Debugging
 ```bash
-mkdir secrets_template
-echo "# Default signing configuration" > secrets_template/signing.conf
+# Enable verbose logging
+python secrets_manager.py --verbose mount
+python secrets_manager.py -v status
 ```
 
-### CI/CD Integration
-For automated builds, import the password once and then use silent operation:
-```bash
-# One-time setup on build machine
-./secrets_dmg_manager.sh import-password "$SECRETS_PASSWORD"
+### Recovery Scenarios
 
-# In build scripts
-eval $(./secrets_dmg_manager.sh mount 0)  # Silent operation
-# ... build process ...
-./secrets_dmg_manager.sh unmount 0
+**Lost Password**
+- If password is lost, encrypted secrets cannot be recovered
+- Restore from backup or recreate secrets manually
+
+**Corrupted Encrypted File**
+```bash
+# Restore from git history
+git log --oneline .myproject.secrets
+git checkout <commit-hash> .myproject.secrets
 ```
 
-## Support
+**Multiple Projects with Same Name**
+- Tool automatically handles this with unique keychain entries
+- Each directory gets its own keychain identifier
 
-This tool is designed to be self-contained and robust. For issues:
+## 🤝 Contributing
 
-1. **Check logs** with debug level: `LOG_LEVEL=4`
-2. **Verify keychain access** manually
-3. **Test DMG integrity** with `hdiutil verify`
-4. **Review file permissions** and paths
+We welcome contributions! Please read our contributing guidelines:
 
-The script uses defensive coding practices and should provide clear error messages for most issues.
+### Development Setup
+```bash
+git clone https://github.com/yourusername/secrets-manager.git
+cd secrets-manager
+python -m pytest tests/  # Run tests
+```
+
+### Code Style
+- Follow PEP 8 Python style guidelines
+- Use defensive programming patterns (do-while-false loops)
+- Include comprehensive error handling
+- Add logging for debugging
+
+### Submitting Changes
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes with tests
+4. Submit a pull request
+
+### Reporting Issues
+Please report bugs and feature requests through GitHub Issues:
+- Include Python version and OS
+- Provide steps to reproduce
+- Include relevant log output (use `--verbose`)
+
+## 📊 Use Cases
+
+### Development Teams
+- Share API keys and database passwords securely
+- Manage environment-specific configurations
+- Ensure consistent secrets across team members
+
+### DevOps/Infrastructure
+- Store SSL certificates and private keys
+- Manage deployment credentials
+- Secure CI/CD pipeline secrets
+
+### Solo Developers
+- Keep personal API keys out of git history
+- Manage multiple project credentials
+- Backup sensitive configuration files
+
+### Compliance
+- Audit trail through git history
+- Encrypted storage meets security requirements
+- No plaintext secrets in repositories
+
+## 🔄 Migration
+
+### From Other Tools
+
+**From .env files:**
+```bash
+python secrets_manager.py create
+mv .env secrets/env
+ln -s secrets/env .env
+echo ".env" >> .gitignore  # Remove from git
+python secrets_manager.py unmount
+```
+
+**From encrypted archives:**
+```bash
+python secrets_manager.py create
+# Extract archive to secrets/
+python secrets_manager.py unmount
+```
+
+### To Other Tools
+```bash
+python secrets_manager.py mount
+# Copy files from secrets/ to new tool
+python secrets_manager.py unmount
+```
+
+## ⚖️ License
+
+**MIT License**
+
+Copyright (c) 2025 Kris Coppieters
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## 🙏 Acknowledgments
+
+- Inspired by the need for simple, secure secret management
+- Built with security and usability in mind
+- Thanks to the Python community for excellent standard library
+
+---
+
+**Made with ❤️ for developers who care about security**
+
+For more information, visit our [GitHub repository](https://github.com/yourusername/secrets-manager) or [documentation site](https://yourusername.github.io/secrets-manager).

@@ -23,6 +23,33 @@ This software is provided "as is", without warranty of any kind, express or impl
 - **🛡️ Defensive Programming**: Robust error handling and secure cleanup
 - **📦 Zero Dependencies**: Single Python script using only standard library
 
+## 🚀 Concept
+
+The tool allows you to embed the secrets within your project as an encrypted file. This encrypted file can safely be stored in a public repository.
+
+The default API is very simple. 
+
+When you need access to the secrets, for example in a build script, you 'mount' the secrets. Once you are done, you 'unmount' them.
+
+```
+  ... secrets are not accessible
+
+secrets_manager.sh mount
+  ...
+  ... build script now accesses secrets/SUPERSECRETPASSWORD
+  ...
+
+secrets_manager.sh unmount
+
+  ... secrets are not accessible any more
+```
+
+No need to remember passwords - these are all stored in the computers secure credential store.
+
+And that's the gist of it!
+
+Of course, there are commands to manage various aspects of the system. Read on...
+
 ## 🆚 Comparison with Other Tools
 
 | Feature | This Tool | git-crypt | SOPS | 1Password CLI | Vault |

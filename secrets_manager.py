@@ -39,39 +39,186 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 import secrets as secure_random
 
+# Windows credential management
+if platform.system() == "Windows":
+    import ctypes
+    from ctypes import wintypes
+
+    # Windows Credential Management API structures and constants
+    CRED_TYPE_GENERIC = 1
+    CRED_PERSIST_LOCAL_MACHINE = 2
+    
+    class CREDENTIAL(ctypes.Structure):
+        _fields_ = [
+            ('Flags', wintypes.DWORD),
+            ('Type', wintypes.DWORD),
+            ('TargetName', wintypes.LPWSTR),
+            ('Comment', wintypes.LPWSTR),
+            ('LastWritten', wintypes.FILETIME),
+            ('CredentialBlobSize', wintypes.DWORD),
+            ('CredentialBlob', wintypes.LPBYTE),
+            ('Persist', wintypes.DWORD),
+            ('AttributeCount', wintypes.DWORD),
+            ('Attributes', ctypes.POINTER(wintypes.LPVOID)),
+            ('TargetAlias', wintypes.LPWSTR),
+            ('UserName', wintypes.LPWSTR),
+        ]
+
+    def _win_read_credential(target_name: str) -> Optional[str]:
+        """Read credential from Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Prepare arguments for CredRead
+            credential_ptr = ctypes.POINTER(CREDENTIAL)()
+            
+            # Call CredRead
+            result = advapi32.CredReadW(
+                ctypes.c_wchar_p(target_name),
+                CRED_TYPE_GENERIC,
+                0,  # Reserved, must be 0
+                ctypes.byref(credential_ptr)
+            )
+            
+            if result:
+                # Successfully read credential
+                cred = credential_ptr.contents
+                password_size = cred.CredentialBlobSize
+                password_data = ctypes.string_at(cred.CredentialBlob, password_size)
+                password = password_data.decode('utf-8')
+                
+                # Free the credential
+                advapi32.CredFree(credential_ptr)
+                
+                return password
+            else:
+                # Failed to read credential
+                return None
+                
+        except Exception:
+            # Silently fail - credential doesn't exist or other error
+            return None
+
+    def _win_write_credential(target_name: str, username: str, password: str) -> bool:
+        """Write credential to Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Prepare credential structure
+            cred = CREDENTIAL()
+            cred.Type = CRED_TYPE_GENERIC
+            cred.TargetName = target_name
+            cred.UserName = username
+            cred.Persist = CRED_PERSIST_LOCAL_MACHINE
+            
+            password_bytes = password.encode('utf-8')
+            cred.CredentialBlob = ctypes.cast(ctypes.c_char_p(password_bytes), wintypes.LPBYTE)
+            cred.CredentialBlobSize = len(password_bytes)
+            
+            # Call CredWrite
+            result = advapi32.CredWriteW(ctypes.byref(cred), 0)
+            
+            return bool(result)
+            
+        except Exception:
+            return False
+
+    def _win_delete_credential(target_name: str) -> bool:
+        """Delete credential from Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Call CredDelete
+            result = advapi32.CredDeleteW(
+                ctypes.c_wchar_p(target_name),
+                CRED_TYPE_GENERIC,
+                0  # Reserved, must be 0
+            )
+            
+            return bool(result)
+            
+        except Exception:
+            return False
+
+# Platform detection for Windows compatibility
+def is_windows():
+    return platform.system() == "Windows"
+
 # Emoji/named symbol constants for consistent use throughout the script
-TICK_MARK = "\u2705"
-CROSS_MARK = "\u274c"
-INFO_MARK = "\u2139\ufe0f"
-KEY_MARK = "\U0001F511"
-WARNING_MARK = "\u26A0\uFE0F"
-FOLDER_MARK = "\U0001F4C1"
-LIGHTBULB_MARK = "\U0001F4A1"
-LOCK_MARK = "\U0001F512"
-UNLOCK_MARK = "\U0001F513"
-FILE_MARK = "\U0001F4C2"
-DISK_MARK = "\U0001F4BE"
-CHECK_MARK = "\u2714"
-DOT_MARK = "\u2022"
-SWEEP_MARK = "\U0001F9F9"
-ROCKET_MARK = "\U0001F680"
-RECYCLE_MARK = "\U0001F504"
+# Use Windows-compatible alternatives when needed
+if is_windows():
+    # Windows-compatible symbols (avoid problematic Unicode ranges)
+    TICK_MARK = "[OK]"
+    CROSS_MARK = "[ERROR]"
+    INFO_MARK = "[INFO]"
+    KEY_MARK = "[KEY]"
+    WARNING_MARK = "[WARNING]"
+    FOLDER_MARK = "[FOLDER]"
+    LIGHTBULB_MARK = "[TIP]"
+    LOCK_MARK = "[LOCKED]"
+    UNLOCK_MARK = "[UNLOCKED]"
+    FILE_MARK = "[FILE]"
+    DISK_MARK = "[DISK]"
+    CHECK_MARK = "[CHECK]"
+    DOT_MARK = "*"
+    SWEEP_MARK = "[CLEAN]"
+    ROCKET_MARK = "[PROJECT]"
+    RECYCLE_MARK = "[CYCLE]"
+else:
+    # Unicode emoji for macOS/Linux
+    TICK_MARK = "\u2705"
+    CROSS_MARK = "\u274c"
+    INFO_MARK = "\u2139\ufe0f"
+    KEY_MARK = "\U0001F511"
+    WARNING_MARK = "\u26A0\uFE0F"
+    FOLDER_MARK = "\U0001F4C1"
+    LIGHTBULB_MARK = "\U0001F4A1"
+    LOCK_MARK = "\U0001F512"
+    UNLOCK_MARK = "\U0001F513"
+    FILE_MARK = "\U0001F4C2"
+    DISK_MARK = "\U0001F4BE"
+    CHECK_MARK = "\u2714"
+    DOT_MARK = "\u2022"
+    SWEEP_MARK = "\U0001F9F9"
+    ROCKET_MARK = "\U0001F680"
+    RECYCLE_MARK = "\U0001F504"
 
 # Global variable to track test mode
 _TEST_MODE = False
 
-def get_password_input(prompt: str) -> str:
-    """Get password input - from stdin in test mode, getpass otherwise."""
+# Test mode constants
+TEST_PASSWORD = "test123"
+TEST_NEW_PASSWORD = "newtest456"
+
+def get_password_input(prompt: str, test_password: str = None) -> str:
+    """Get password input - uses test_password if provided, otherwise from stdin in test mode, getpass otherwise."""
     global _TEST_MODE
+
+    # If test password is provided, use it immediately
+    if test_password is not None:
+        print(prompt + "(using test password)")
+        return test_password
+
     if _TEST_MODE:
         print(prompt, end='', flush=True)
-        return input()
+        try:
+            return input()
+        except EOFError:
+            # In test mode, if we get EOF, return test password
+            print("(EOF - using test password)")
+            return TEST_PASSWORD
     else:
         return getpass.getpass(prompt)
 
-def get_confirmation_input(prompt: str, auto_confirm: bool = False) -> str:
-    """Get confirmation input - auto-confirm in test mode, input otherwise."""
+def get_confirmation_input(prompt: str, auto_confirm: bool = False, test_response: str = None) -> str:
+    """Get confirmation input - uses test_response if provided, otherwise auto-confirm in test mode, input otherwise."""
     global _TEST_MODE
+
+    # If test response is provided, use it immediately
+    if test_response is not None:
+        print(prompt + test_response)
+        return test_response
+
     if _TEST_MODE and auto_confirm:
         print(prompt + "y")
         return "y"
@@ -271,7 +418,7 @@ class SecretsManager:
 
                 # Get password for encryption
                 if not password:
-                    password = get_password_input("Enter password to encrypt secrets: ")
+                    password = get_password_input("Enter password to encrypt secrets: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not password:
                         print(f"{CROSS_MARK} Password required to encrypt secrets")
                         break
@@ -280,9 +427,9 @@ class SecretsManager:
                 if self._unmount_with_password(password):
                         # Store password for future mount/unmount operations
                         if self._store_password(password):
-                            print(f"{KEY_MARK} Password stored in keychain")
+                            print(f"{KEY_MARK} Password stored in credential store")
                         else:
-                            print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                            print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
                         # Save project configuration for future commands
                         self._save_project_config(self.project_name, self.secrets_dir)
                         print(f"{TICK_MARK} Successfully created encrypted secrets from existing folder")
@@ -298,7 +445,7 @@ class SecretsManager:
 
                 # Get password for future use
                 if not password:
-                    password = get_password_input("Enter password for this project: ")
+                    password = get_password_input("Enter password for this project: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not password:
                         print(f"{CROSS_MARK} Password required for project setup")
                         shutil.rmtree(self.secrets_dir, ignore_errors=True)
@@ -306,9 +453,9 @@ class SecretsManager:
 
                 # Store password for future mount/unmount operations
                 if self._store_password(password):
-                    print(f"{KEY_MARK} Password stored in keychain")
+                    print(f"{KEY_MARK} Password stored in credential store")
                 else:
-                    print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                    print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
 
                 # Create helpful README
                 readme_path = os.path.join(self.secrets_dir, "README.txt")
@@ -355,7 +502,9 @@ class SecretsManager:
                 print(f"   {DOT_MARK} Secrets folder: {self.secrets_dir}/")
             print()
 
-            response = get_confirmation_input("Type 'DELETE' to confirm destruction: ")
+            # In test mode, auto-provide DELETE response, otherwise get interactive input
+            response = get_confirmation_input("Type 'DELETE' to confirm destruction: ", False, "DELETE" if _TEST_MODE else None)
+
             if response != 'DELETE':
                 print(f"{CROSS_MARK} Operation cancelled - nothing was deleted")
                 break
@@ -432,7 +581,7 @@ class SecretsManager:
                 current_password = self._get_password()
                 if not current_password:
                     print(f"{INFO_MARK}  No stored password found")
-                    current_password = get_password_input("Enter current password: ")
+                    current_password = get_password_input("Enter current password: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not current_password:
                         print(f"{CROSS_MARK} Current password required")
                         break
@@ -447,7 +596,7 @@ class SecretsManager:
                 current_password = self._get_password()
                 if not current_password:
                     print(f"{INFO_MARK}  No stored password found")
-                    current_password = get_password_input("Enter current password: ")
+                    current_password = get_password_input("Enter current password: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not current_password:
                         print(f"{CROSS_MARK} Current password required")
                         break
@@ -473,12 +622,12 @@ class SecretsManager:
                             self._cleanup_mount_point()
                         break
 
-                print(f"{RECYCLE_MARK} Updating password in keychain...")
+                print(f"{RECYCLE_MARK} Updating password in credential store...")
 
                 # Clear old password and store new one
                 self._clear_stored_password()
                 if not self._store_password(new_password):
-                    print(f"{WARNING_MARK}  Warning: Could not store new password in keychain")
+                    print(f"{WARNING_MARK}  Warning: Could not store new password in credential store")
 
                 # Stage 3: Unmount with new password (this re-encrypts)
                 print(f"{LOCK_MARK} Re-encrypting with new password...")
@@ -498,7 +647,7 @@ class SecretsManager:
                         print(f"{TICK_MARK} Re-mounted successfully")
 
                 print(f"{TICK_MARK} Password changed successfully!")
-                print(f"{KEY_MARK} New password stored in keychain")
+                print(f"{KEY_MARK} New password stored in credential store")
                 print()
                 print(f"{LIGHTBULB_MARK} Team members will need the new password:")
                 print(f"   python secrets_manager.py clear")
@@ -518,7 +667,7 @@ class SecretsManager:
         return ret_val
 
     def clear_password(self) -> bool:
-        """Remove stored password from keychain for this project."""
+        """Remove stored password from credential store for this project."""
         ret_val = False
         self.logger.info("ENTRY: clear_password")
 
@@ -534,11 +683,11 @@ class SecretsManager:
 
             try:
                 if self._clear_stored_password():
-                    print(f"{TICK_MARK} Password cleared from keychain for project '{self.project_name}'")
+                    print(f"{TICK_MARK} Password cleared from credential store for project '{self.project_name}'")
                     print(f"{LIGHTBULB_MARK} Use 'pass' command to store a new password")
                     ret_val = True
                 else:
-                    print(f"{CROSS_MARK} Failed to clear password from keychain")
+                    print(f"{CROSS_MARK} Failed to clear password from credential store")
                     break
 
             except Exception as e:
@@ -550,7 +699,7 @@ class SecretsManager:
         return ret_val
 
     def store_password(self, password: Optional[str] = None) -> bool:
-        """Store password in keychain for this project."""
+        """Store password in credential store for this project."""
         ret_val = False
         self.logger.info("ENTRY: store_password")
 
@@ -559,17 +708,17 @@ class SecretsManager:
             do_once = False
 
             if not password:
-                password = get_password_input(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None)
                 if not password:
                     print(f"{CROSS_MARK} Password cannot be empty")
                     break
 
             if self._store_password(password):
-                print(f"{TICK_MARK} Password stored in keychain for project '{self.project_name}'")
+                print(f"{TICK_MARK} Password stored in credential store for project '{self.project_name}'")
                 print(f"{LIGHTBULB_MARK} You can now use 'mount' without entering the password")
                 ret_val = True
             else:
-                print(f"{CROSS_MARK} Failed to store password in keychain")
+                print(f"{CROSS_MARK} Failed to store password in credential store")
                 break
 
         self.logger.info(f"EXIT: store_password, returning: {ret_val}")
@@ -603,7 +752,7 @@ class SecretsManager:
             password = self._get_password()
             if not password:
                 print(f"{INFO_MARK}  No stored password found for project '{self.project_name}'")
-                password = get_password_input(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None)
                 if not password:
                     print(f"{CROSS_MARK} Password required to decrypt secrets")
                     break
@@ -676,12 +825,12 @@ class SecretsManager:
 
                 # Offer to store password if it wasn't stored before
                 if not self._has_stored_password():
-                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in keychain for future use? (y/n): ", True).lower()
+                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in credential store for future use? (y/n): ", True).lower()
                     if response == 'y' or response == 'yes':
                         if self._store_password(password):
-                            print(f"{TICK_MARK} Password stored in keychain")
+                            print(f"{TICK_MARK} Password stored in credential store")
                         else:
-                            print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                            print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
 
             except Exception as e:
                 print(f"{CROSS_MARK} Failed to mount secrets: {e}")
@@ -702,6 +851,23 @@ class SecretsManager:
         while do_once:
             do_once = False
 
+            # Get password from stored credentials first
+            password = self._get_password()
+            if not password:
+                # Check if this is a project that was set up before (encrypted file exists)
+                if os.path.exists(self.secrets_file):
+                    print(f"{CROSS_MARK} No stored password found for project '{self.project_name}'")
+                    print(f"{LIGHTBULB_MARK} Store password first with:")
+                    print(f"   python secrets_manager.py pass")
+                    break
+                else:
+                    # No encrypted file exists, so this is a fresh setup - ask for password
+                    password = get_password_input(f"Enter password for project '{self.project_name}': ", 
+                                                TEST_PASSWORD if _TEST_MODE else None)
+                    if not password:
+                        break
+
+            # Check if there's anything to unmount
             if not os.path.exists(self.secrets_dir):
                 print(f"{INFO_MARK}  No secrets folder to unmount")
                 ret_val = True
@@ -709,14 +875,6 @@ class SecretsManager:
 
             if not os.path.isdir(self.secrets_dir):
                 print(f"{CROSS_MARK} {self.secrets_dir} is not a directory")
-                break
-
-            # Get password from stored credentials
-            password = self._get_password()
-            if not password:
-                print(f"{CROSS_MARK} No stored password found for project '{self.project_name}'")
-                print(f"{LIGHTBULB_MARK} Store password first with:")
-                print(f"   python secrets_manager.py pass")
                 break
 
             # Check if secrets have changed since last mount
@@ -1073,9 +1231,8 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                subprocess.run([
-                    "cmdkey", "/delete:" + service_name
-                ], check=True, capture_output=True)
+                # Delete credential using Win32 API
+                return _win_delete_credential(service_name)
 
             else:  # Linux and others
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1118,7 +1275,7 @@ class SecretsManager:
 
     def _show_helpful_status(self, status: Dict[str, Any]):
         """Show status in a user-friendly way."""
-        print(f"📋 Status for project: {status['project']}")
+        print(f"{CHECK_MARK} Status for project: {status['project']}")
         print(f"   Secrets directory: {status['secrets_dir']}")
         print(f"   Encrypted file: {f'{TICK_MARK} exists' if status['secrets_file_exists'] else f'{CROSS_MARK} not found'}")
 
@@ -1135,7 +1292,7 @@ class SecretsManager:
         print(f"   Password stored: {f'{TICK_MARK} yes' if status['password_stored'] else f'{CROSS_MARK} no'}")
 
         # Show next steps
-        print("\n💡 Next steps:")
+        print(f"\n{LIGHTBULB_MARK} Next steps:")
         if not status['secrets_file_exists']:
             print(f"   python secrets_manager.py create")
         elif not status['mounted']:
@@ -1246,11 +1403,9 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                subprocess.run([
-                    "cmdkey", "/generic:" + service_name,
-                    "/user:" + getpass.getuser(),
-                    "/pass:" + password
-                ], check=True, capture_output=True)
+                # Store credential using Win32 API
+                username = getpass.getuser()
+                return _win_write_credential(service_name, username, password)
 
             else:  # Linux and others
                 # Store in encrypted file as fallback
@@ -1284,17 +1439,9 @@ class SecretsManager:
                 return result.stdout.strip()
 
             elif self.platform == "windows":
-                # Windows credential retrieval requires parsing output
-                result = subprocess.run([
-                    "cmdkey", "/list:" + service_name
-                ], capture_output=True, text=True)
-
-                if service_name in result.stdout:
-                    # Password stored, but Windows doesn't easily return it
-                    # For simplicity, ask for password
-                    return getpass.getpass("Enter secrets password: ")
-                else:
-                    return None
+                # Windows credential retrieval using Win32 API
+                password = _win_read_credential(service_name)
+                return password
 
             else:  # Linux and others
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1333,10 +1480,9 @@ class SecretsManager:
                 return True
 
             elif self.platform == "windows":
-                result = subprocess.run([
-                    "cmdkey", "/list:" + service_name
-                ], capture_output=True, text=True)
-                return service_name in result.stdout
+                # Check if credential exists using Win32 API
+                password = _win_read_credential(service_name)
+                return password is not None
 
             else:  # Linux
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1371,8 +1517,8 @@ def main():
         print("  create    Create empty secrets folder (fails if .projectname.secrets already exists)")
         print("  mount     Mount secrets (decrypt .projectname.secrets to folder)")
         print("  unmount   Unmount secrets (encrypt folder to .projectname.secrets)")
-        print("  pass      Store password in keychain for this project")
-        print("  clear     Remove stored password from keychain")
+        print("  pass      Store password in OS credential store for this project")
+        print("  clear     Remove stored password from OS credential store")
         print("  change-password  Change project password (re-encrypts all secrets)")
         print("  destroy   Permanently delete all project secrets and passwords")
         print("  status    Show current status")

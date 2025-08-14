@@ -1,6 +1,6 @@
 # Cross-Platform Secrets Manager
 
-**Version 1.0.5**
+**Version 1.0.6**
 
 NOTE 20250815: Windows version is not working yet. Mac and Linux seem to work fine
 
@@ -55,6 +55,69 @@ This software is provided "as is", without warranty of any kind, express or impl
 
 ## ⚡ Quick Start
 
+**Using Wrapper Scripts (Recommended - Auto-detects Python):**
+
+*macOS/Linux:*
+```bash
+# 1. Create a new secrets project
+./secrets_manager.sh create
+
+# 2. Add your secret files to the secrets/ folder
+echo "API_KEY=super_secret_key" > secrets/.env
+echo "DATABASE_URL=postgres://..." > secrets/database.conf
+
+# 3. Encrypt and clean up
+./secrets_manager.sh unmount
+
+# 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+# 5. Later, decrypt when you need to work
+./secrets_manager.sh mount
+# Edit files in secrets/
+./secrets_manager.sh unmount
+
+# 6. Security operations as needed
+./secrets_manager.sh change-password  # Rotate password
+./secrets_manager.sh destroy          # Remove everything
+
+# 7. Verify everything works (optional)
+./test_secrets_manager.sh             # Run comprehensive tests
+```
+
+*Windows:*
+```cmd
+REM 1. Create a new secrets project
+secrets_manager.bat create
+
+REM 2. Add your secret files to the secrets\ folder
+echo API_KEY=super_secret_key > secrets\.env
+echo DATABASE_URL=postgres://... > secrets\database.conf
+
+REM 3. Encrypt and clean up
+secrets_manager.bat unmount
+
+REM 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+REM 5. Later, decrypt when you need to work
+secrets_manager.bat mount
+REM Edit files in secrets\
+secrets_manager.bat unmount
+
+REM 6. Security operations as needed
+secrets_manager.bat change-password
+secrets_manager.bat destroy
+
+REM 7. Verify everything works (optional)
+test_secrets_manager.bat
+```
+
+**Manual Python Execution (if you prefer direct control):**
+
+**macOS/Linux:**
 ```bash
 # 1. Create a new secrets project
 python secrets_manager.py create
@@ -83,6 +146,38 @@ python secrets_manager.py destroy          # Remove everything
 python test_secrets_manager.py             # Run comprehensive tests
 ```
 
+**Windows:**
+```cmd
+REM Set UTF-8 encoding for proper display
+chcp 65001
+
+REM 1. Create a new secrets project
+python secrets_manager.py create
+
+REM 2. Add your secret files to the secrets\ folder
+echo API_KEY=super_secret_key > secrets\.env
+echo DATABASE_URL=postgres://... > secrets\database.conf
+
+REM 3. Encrypt and clean up
+python secrets_manager.py unmount
+
+REM 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+REM 5. Later, decrypt when you need to work
+python secrets_manager.py mount
+REM Edit files in secrets\
+python secrets_manager.py unmount
+
+REM 6. Security operations as needed
+python secrets_manager.py change-password
+python secrets_manager.py destroy
+
+REM 7. Verify everything works (optional)
+python test_secrets_manager.py
+```
+
 ## 📦 Installation
 
 ### Prerequisites
@@ -90,6 +185,8 @@ python test_secrets_manager.py             # Run comprehensive tests
 - Git (for version control)
 
 ### Download
+
+**macOS/Linux:**
 ```bash
 # Download the main script
 curl -O https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py
@@ -106,12 +203,54 @@ cd secretDmg
 python test_secrets_manager.py
 ```
 
+**Windows:**
+```cmd
+REM Download using PowerShell (recommended for Unicode support)
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py' -OutFile 'secrets_manager.py'"
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/zwettemaan/secretDmg/main/test_secrets_manager.py' -OutFile 'test_secrets_manager.py'"
+
+REM Or clone the repository
+git clone https://github.com/zwettemaan/secretDmg.git
+cd secretDmg
+
+REM Set UTF-8 encoding and verify installation
+chcp 65001
+python test_secrets_manager.py
+```
+
 ### Optional: Add to PATH
 ```bash
-# Make it available globally
+# Make it available globally (Unix/Linux/macOS)
 sudo cp secrets_manager.py /usr/local/bin/secrets_manager
 sudo chmod +x /usr/local/bin/secrets_manager
+
+# Or use the wrapper script (recommended)
+sudo cp secrets_manager.sh /usr/local/bin/secrets_manager
+sudo chmod +x /usr/local/bin/secrets_manager
 ```
+
+### Easy-to-Use Wrapper Scripts (Recommended)
+
+The project includes wrapper scripts that automatically detect your Python installation:
+
+**Unix/Linux/macOS:**
+```bash
+./secrets_manager.sh create          # Auto-detects python3/python
+./test_secrets_manager.sh            # Runs comprehensive tests
+```
+
+**Windows:**
+```cmd
+secrets_manager.bat create           # Auto-detects python/python3/py
+test_secrets_manager.bat             # Runs comprehensive tests
+```
+
+**Benefits of wrapper scripts:**
+- ✅ **Auto-detects** Python executable (python3, python, py, etc.)
+- ✅ **Version checking** ensures Python 3.6+ compatibility
+- ✅ **Helpful error messages** with installation guidance
+- ✅ **Cross-platform** consistency
+- ✅ **No Python knowledge** required for users
 
 ## 🎯 Usage
 
@@ -150,7 +289,11 @@ myproject/
 │   ├── database.conf
 │   └── secrets_manager.hash     # Change detection
 ├── secrets_manager.py           # The tool itself
-└── test_secrets_manager.py      # Comprehensive test suite (optional)
+├── secrets_manager.sh           # Unix/Linux/macOS wrapper script
+├── secrets_manager.bat          # Windows wrapper script
+├── test_secrets_manager.py      # Comprehensive test suite (optional)
+├── test_secrets_manager.sh      # Unix/Linux/macOS test runner
+└── test_secrets_manager.bat     # Windows test runner
 ```
 
 **Configuration Persistence**: When you run `create` with `--project` or `--secrets-dir`, these settings are automatically saved in `.secrets_keychain_entry` and used by all subsequent commands (`mount`, `unmount`, etc.).
@@ -416,13 +559,27 @@ security find-generic-password -s "secrets_manager_myproject_abc123"
 ```
 
 ### Windows
-```bash
-# Password stored in Credential Manager
-cmdkey /list:secrets_manager_myproject_abc123
+```cmd
+# Password stored in Credential Manager (Windows API)
+# View stored credentials: Control Panel > Credential Manager > Windows Credentials
+# Look for entries starting with "secrets_manager_"
 
-# Use Command Prompt or PowerShell
+# Use 'python' not 'python3' on Windows
 python secrets_manager.py create
+
+# For best Unicode support, use PowerShell or Windows Terminal
+powershell
+python secrets_manager.py create
+
+# Set UTF-8 encoding if you see Unicode errors
+chcp 65001
 ```
+
+**Important Notes:**
+- Windows uses `python.exe`, not `python3.exe`
+- Command Prompt has limited Unicode support - use PowerShell or Windows Terminal
+- Credentials are stored using Windows Credential Management API
+- May need to run as Administrator for some operations
 
 ### Linux
 ```bash
@@ -584,6 +741,55 @@ python secrets_manager.py destroy
 ```bash
 # Change password and re-encrypt all secrets
 python secrets_manager.py change-password
+```
+
+### Windows-Specific Issues
+
+**"python is not recognized as an internal or external command"**
+```cmd
+REM Solution 1: Use the wrapper script (recommended)
+REM The wrapper script auto-detects your Python installation
+secrets_manager.bat create
+test_secrets_manager.bat
+
+REM Solution 2: Try alternative Python commands
+py secrets_manager.py create
+python3 secrets_manager.py create
+
+REM Solution 3: If you need python3 command, create a copy
+copy "C:\Python311\python.exe" "C:\Python311\python3.exe"
+REM (adjust path to your Python installation)
+```
+
+**"Access denied" or permission errors**
+```cmd
+REM Run Command Prompt as Administrator
+REM Right-click Command Prompt → "Run as administrator"
+python secrets_manager.py create
+```
+
+**"Credential Manager issues"**
+```cmd
+REM View stored credentials in GUI:
+REM Control Panel > Credential Manager > Windows Credentials
+REM Look for entries starting with "secrets_manager_"
+
+REM Clear and reset password using the script:
+python secrets_manager.py clear
+python secrets_manager.py pass
+
+REM Note: Credential deletion is handled automatically by the script
+```
+
+**Testing on Windows**
+```cmd
+REM Ensure UTF-8 encoding before running tests
+chcp 65001
+python test_secrets_manager.py
+
+REM Or use PowerShell (better Unicode support)
+powershell
+python test_secrets_manager.py
 ```
 
 ### Debugging

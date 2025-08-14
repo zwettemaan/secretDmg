@@ -1,10 +1,2 @@
+__pycache__/
 .secrets_keychain_entry
-
-private/
-
-secrets/
-
-.private/
-
-PRIV/
-__pycache__

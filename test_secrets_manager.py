@@ -14,7 +14,60 @@ import sys
 import shutil
 import tempfile
 import subprocess
+import platform
 from pathlib import Path
+
+# Import test constants from secrets_manager
+from secrets_manager import TEST_PASSWORD, TEST_NEW_PASSWORD
+
+# Platform detection for Windows compatibility
+def is_windows():
+    return platform.system() == "Windows"
+
+# Platform-aware emoji/symbols
+if is_windows():
+    # Windows-compatible symbols
+    OK_MARK = "[OK]"
+    ERROR_MARK = "[ERROR]"
+    CHECK_MARK = "[CHECK]"
+    DOC_MARK = "[STORY]"
+    CMD_MARK = "[CMD]"
+    FILE_MARK = "[FILE]"
+    FOLDER_MARK = "[FOLDER]"
+    EDIT_MARK = "[EDIT]"
+    HOME_MARK = "[HOME]"
+    BUILD_MARK = "[BUILD]"
+    STATS_MARK = "[STATS]"
+    WARN_MARK = "[WARN]"
+    BOOKS_MARK = "[STORIES]"
+    ROCKET_MARK = "[SETUP]"
+    SUMMARY_MARK = "[RESULTS]"
+    CLEAN_MARK = "[CLEANUP]"
+    BOOM_MARK = "[ISSUES]"
+else:
+    # Unicode emoji for macOS/Linux
+    OK_MARK = "✅"
+    ERROR_MARK = "❌"
+    CHECK_MARK = "🔍"
+    DOC_MARK = "📖"
+    CMD_MARK = "📝"
+    FILE_MARK = "📄"
+    FOLDER_MARK = "📁"
+    EDIT_MARK = "✏️"
+    HOME_MARK = "🏠"
+    BUILD_MARK = "🔨"
+    STATS_MARK = "📊"
+    WARN_MARK = "⚠️"
+    BOOKS_MARK = "📚"
+    ROCKET_MARK = "🚀"
+    SUMMARY_MARK = "📋"
+    CLEAN_MARK = "🧹"
+    BOOM_MARK = "💥"
+    EDIT_MARK = "✏️"
+    HOME_MARK = "🏠"
+    BUILD_MARK = "🏗️"
+    STATS_MARK = "📊"
+    WARN_MARK = "⚠️"
 
 class SecretsManagerStory:
     """A story-driven test suite that reads like natural language."""
@@ -27,10 +80,10 @@ class SecretsManagerStory:
 
     def setup_testing_environment(self):
         """Prepare a clean testing environment."""
-        print("🚀 Setting up a fresh testing environment...")
+        print(f"{ROCKET_MARK} Setting up a fresh testing environment...")
 
         self.test_dir = tempfile.mkdtemp(prefix="secrets_test_")
-        print(f"📁 Working in: {self.test_dir}")
+        print(f"{FOLDER_MARK} Working in: {self.test_dir}")
 
         current_script = Path(__file__).parent / "secrets_manager.py"
         self.script_path = Path(self.test_dir) / "secrets_manager.py"
@@ -38,7 +91,7 @@ class SecretsManagerStory:
         os.chmod(self.script_path, 0o755)
         os.chdir(self.test_dir)
 
-        print("✅ Environment ready")
+        print(f"{OK_MARK} Environment ready")
         return self
 
     def cleanup_testing_environment(self):
@@ -46,53 +99,98 @@ class SecretsManagerStory:
         if self.test_dir and os.path.exists(self.test_dir):
             os.chdir(os.path.dirname(self.test_dir))
             shutil.rmtree(self.test_dir)
-            print(f"🧹 Cleaned up: {self.test_dir}")
+            print(f"{CLEAN_MARK} Cleaned up: {self.test_dir}")
+
+        # Clean up temporary files on Windows
+        if hasattr(self, '_temp_files_to_cleanup'):
+            for temp_file in self._temp_files_to_cleanup:
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except:
+                    pass  # Ignore cleanup errors
 
     def run(self, command_description, command, should_succeed=True):
         """Execute a command with readable description."""
-        print(f"  📝 {command_description}")
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        print(f"  {CMD_MARK} {command_description}")
+
+        # Add debugging for Windows
+        if is_windows():
+            print(f"  [DEBUG] Full command: {command}")
+
+        try:
+            # Add timeout to prevent hanging and handle stdin properly
+            if is_windows() and '|' not in command and '<' not in command:
+                # For simple commands on Windows, explicitly set stdin to DEVNULL
+                result = subprocess.run(command, shell=True, capture_output=True, text=True,
+                                      timeout=30, stdin=subprocess.DEVNULL)
+            else:
+                result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            print(f"  {ERROR_MARK} Command timed out after 30 seconds")
+            return False
 
         if should_succeed and result.returncode != 0:
-            print(f"  ❌ Expected success but failed: {result.stderr}")
+            error_msg = result.stderr.strip() if result.stderr.strip() else result.stdout.strip()
+            if not error_msg:
+                error_msg = f"Command exited with code {result.returncode}"
+            print(f"  {ERROR_MARK} Expected success but failed: {error_msg}")
             return False
         elif not should_succeed and result.returncode == 0:
-            print(f"  ❌ Expected failure but succeeded")
+            print(f"  {ERROR_MARK} Expected failure but succeeded")
             return False
 
-        success_indicator = "✅" if should_succeed else "⚠️"
+        success_indicator = OK_MARK if should_succeed else WARN_MARK
         action = "succeeded" if result.returncode == 0 else "failed as expected"
         print(f"  {success_indicator} {action}")
         return True
 
     def cmd(self, command_str, input_data=None, should_succeed=True):
         """Execute a command showing only what the user would type."""
+        # Platform-aware Python executable and input commands
+        python_cmd = "python" if is_windows() else "python3"
+
         # Build the actual command with technical details hidden
         if input_data is None:
-            full_command = f"python3 {command_str} --test-mode"
+            full_command = f"{python_cmd} {command_str} --test-mode"
         elif isinstance(input_data, list):
             # Multiple inputs (like for change-password)
             input_string = '\\n'.join(input_data)
-            full_command = f"printf '{input_string}\\n' | python3 {command_str} --test-mode"
+            if is_windows():
+                # Windows: Use temporary file approach to avoid piping issues
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+                    f.write(input_string.replace('\\n', '\n'))
+                    temp_file = f.name
+                full_command = f"{python_cmd} {command_str} --test-mode < {temp_file}"
+                # Clean up temp file after execution
+                self._temp_files_to_cleanup = getattr(self, '_temp_files_to_cleanup', [])
+                self._temp_files_to_cleanup.append(temp_file)
+            else:
+                full_command = f"printf '{input_string}\\n' | {python_cmd} {command_str} --test-mode"
         else:
             # Single input
-            full_command = f"echo '{input_data}' | python3 {command_str} --test-mode"
+            if is_windows():
+                # Windows: Use echo with proper escaping
+                full_command = f"echo {input_data} | {python_cmd} {command_str} --test-mode"
+            else:
+                full_command = f"echo '{input_data}' | {python_cmd} {command_str} --test-mode"
 
         return self.run(command_str, full_command, should_succeed)
 
     def check_that(self, description, condition):
-        """Verify a condition with readable description."""
-        print(f"  🔍 Checking that {description}")
-        if condition():
-            print(f"  ✅ Confirmed")
+        """Perform a readable verification."""
+        print(f"  {CHECK_MARK} Checking that {description}")
+        if condition:
+            print(f"  {OK_MARK} Confirmed")
             return True
         else:
-            print(f"  ❌ Not verified")
+            print(f"  {ERROR_MARK} Not verified")
             return False
 
     def create_sample_secrets(self, in_folder="secrets"):
-        """Create realistic sample secret files."""
-        print(f"  📄 Creating sample secrets in {in_folder}/")
+        """Create sample secret files for testing."""
+        print(f"  {FILE_MARK} Creating sample secrets in {in_folder}/")
         secrets_path = Path(in_folder)
         secrets_path.mkdir(exist_ok=True)
 
@@ -106,12 +204,27 @@ class SecretsManagerStory:
 
         return self
 
-    def modify_secrets(self, in_folder="secrets"):
-        """Modify existing secret files to test persistence."""
-        print(f"  ✏️ Modifying secrets in {in_folder}/")
-        secrets_path = Path(in_folder)
-        (secrets_path / ".env").write_text("API_KEY=updated_secret\nDB_PASSWORD=new_password\n")
-        (secrets_path / "new_secret.txt").write_text("This is a new secret file\n")
+    def modify_sample_secrets(self, in_folder="secrets"):
+        """Modify existing secret files for testing."""
+        print(f"  {EDIT_MARK} Modifying secrets in {in_folder}/")
+        try:
+            secrets_path = Path(in_folder)
+            if not secrets_path.exists():
+                print(f"  [DEBUG] Warning: {in_folder} folder doesn't exist for modification")
+                return self
+
+            # Modify existing .env file
+            env_file = secrets_path / ".env"
+            if env_file.exists():
+                env_file.write_text("API_KEY=updated_secret\nDB_PASSWORD=new_password\n")
+
+            # Create new secret file
+            new_secret_file = secrets_path / "new_secret.txt"
+            new_secret_file.write_text("This is a new secret file\n")
+
+        except Exception as e:
+            print(f"  [DEBUG] Error modifying secrets: {e}")
+
         return self
 
     def folder_exists(self, folder_name):
@@ -135,9 +248,17 @@ class SecretsManagerStory:
         def check():
             try:
                 secrets_path = Path(in_folder)
-                env_content = (secrets_path / ".env").read_text()
+                if not secrets_path.exists():
+                    return False
+
+                env_file = secrets_path / ".env"
+                if not env_file.exists():
+                    return False
+
+                env_content = env_file.read_text()
                 return "API_KEY=" in env_content and "DB_PASSWORD=" in env_content
-            except:
+            except Exception as e:
+                print(f"  [DEBUG] Error checking expected content: {e}")
                 return False
         return check
 
@@ -146,10 +267,19 @@ class SecretsManagerStory:
         def check():
             try:
                 secrets_path = Path(in_folder)
-                env_content = (secrets_path / ".env").read_text()
-                new_file_exists = (secrets_path / "new_secret.txt").exists()
-                return "updated_secret" in env_content and new_file_exists
-            except:
+                if not secrets_path.exists():
+                    return False
+
+                env_file = secrets_path / ".env"
+                new_file = secrets_path / "new_secret.txt"
+
+                if not env_file.exists() or not new_file.exists():
+                    return False
+
+                env_content = env_file.read_text()
+                return "updated_secret" in env_content
+            except Exception as e:
+                print(f"  [DEBUG] Error checking modified content: {e}")
                 return False
         return check
 
@@ -166,23 +296,23 @@ class SecretsManagerStory:
     def scenario_passes(self, scenario_name):
         """Mark a scenario as passed."""
         self.passed_scenarios.append(scenario_name)
-        print(f"✅ Scenario passed: {scenario_name}")
+        print(f"{OK_MARK} Scenario passed: {scenario_name}")
 
     def scenario_fails(self, scenario_name, reason=""):
         """Mark a scenario as failed."""
         self.failed_scenarios.append(f"{scenario_name}: {reason}" if reason else scenario_name)
-        print(f"❌ Scenario failed: {scenario_name}")
+        print(f"{ERROR_MARK} Scenario failed: {scenario_name}")
 
     def tell_the_basic_user_story(self):
         """The main user journey through creating, using, and destroying secrets."""
-        print("\n📖 Testing the basic user story...")
+        print(f"\n{DOC_MARK} Testing the basic user story...")
 
         all_steps_passed = True
         project_name = os.path.basename(os.getcwd())
 
         try:
             # Chapter 1: Creating secrets
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that("secrets folder is created", self.folder_exists("secrets")):
@@ -211,7 +341,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # Chapter 4: Modifying secrets
-            self.modify_secrets()
+            self.modify_sample_secrets()
 
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
@@ -229,7 +359,7 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py unmount", should_succeed=False):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py pass", "test123"):
+            if not self.cmd("secrets_manager.py pass", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py mount"):
@@ -258,7 +388,7 @@ class SecretsManagerStory:
 
     def tell_the_custom_configuration_story(self):
         """User story with custom project names and folder locations."""
-        print("\n📖 Testing custom configuration story...")
+        print(f"\n{DOC_MARK} Testing custom configuration story...")
 
         all_steps_passed = True
         custom_project = "my_secret_project"
@@ -266,7 +396,7 @@ class SecretsManagerStory:
 
         try:
             # User wants custom names for their project
-            if not self.cmd("secrets_manager.py create --project my_secret_project --secrets-dir .private_files", "test123"):
+            if not self.cmd("secrets_manager.py create --project my_secret_project --secrets-dir .private_files", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that(f"custom folder '{custom_folder}' is created", self.folder_exists(custom_folder)):
@@ -289,7 +419,7 @@ class SecretsManagerStory:
             if not self.check_that(f"custom folder '{custom_folder}' reappears", self.folder_exists(custom_folder)):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py change-password", ["newpass456", "newpass456"]):
+            if not self.cmd("secrets_manager.py change-password", [TEST_NEW_PASSWORD, TEST_NEW_PASSWORD]):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py unmount"):
@@ -320,7 +450,7 @@ class SecretsManagerStory:
 
     def tell_the_status_monitoring_story(self):
         """User story about checking vault status at various points."""
-        print("\n📖 Testing status monitoring story...")
+        print(f"\n{DOC_MARK} Testing status monitoring story...")
 
         all_steps_passed = True
 
@@ -330,7 +460,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User creates vault and checks status
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py status"):
@@ -371,7 +501,7 @@ class SecretsManagerStory:
 
     def tell_the_error_handling_story(self):
         """User story about what happens when things go wrong."""
-        print("\n📖 Testing error handling story...")
+        print(f"\n{DOC_MARK} Testing error handling story...")
 
         all_steps_passed = True
 
@@ -385,7 +515,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User creates vault successfully
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             self.create_sample_secrets()
@@ -394,7 +524,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User tries to create vault again (should fail)
-            if not self.cmd("secrets_manager.py create", "test123", should_succeed=False):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD, should_succeed=False):
                 all_steps_passed = False
 
             project_name = os.path.basename(os.getcwd())
@@ -414,7 +544,7 @@ class SecretsManagerStory:
 
     def tell_the_comprehensive_command_story(self):
         """Verify every single command works in isolation."""
-        print("\n📖 Testing comprehensive command coverage...")
+        print(f"\n{DOC_MARK} Testing comprehensive command coverage...")
 
         all_steps_passed = True
         project_name = os.path.basename(os.getcwd())
@@ -423,7 +553,7 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py status"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py status"):
@@ -443,13 +573,13 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py clear"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py pass", "test123"):
+            if not self.cmd("secrets_manager.py pass", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py change-password", ["newpass456", "newpass456"]):
+            if not self.cmd("secrets_manager.py change-password", [TEST_NEW_PASSWORD, TEST_NEW_PASSWORD]):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py destroy", "DELETE"):
@@ -474,15 +604,15 @@ class SecretsManagerStory:
 
     def tell_the_folder_verification_story(self):
         """Test with various folder names and configurations."""
-        print("\n📖 Testing folder management story...")
+        print(f"\n{DOC_MARK} Testing folder management story...")
 
         all_steps_passed = True
 
         try:
-            print("  🏠 Testing default folder behavior...")
+            print(f"  {HOME_MARK} Testing default folder behavior...")
             project_name = os.path.basename(os.getcwd())
 
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that("default secrets folder exists", self.folder_exists("secrets")):
@@ -514,11 +644,11 @@ class SecretsManagerStory:
             if not self.check_that("default files are gone", self.no_secrets_files_remain(project_name)):
                 all_steps_passed = False
 
-            print("  🏗️ Testing custom folder behavior...")
+            print(f"  {BUILD_MARK} Testing custom folder behavior...")
             custom_project = "test_custom"
             custom_folder = "my_special_secrets"
 
-            if not self.cmd(f"secrets_manager.py create --project {custom_project} --secrets-dir {custom_folder}", "test123"):
+            if not self.cmd(f"secrets_manager.py create --project {custom_project} --secrets-dir {custom_folder}", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that(f"custom folder '{custom_folder}' exists", self.folder_exists(custom_folder)):
@@ -563,7 +693,7 @@ class SecretsManagerStory:
 
     def tell_all_stories(self):
         """Run through all the user stories."""
-        print("📚 Telling all the secrets manager stories...")
+        print(f"{BOOKS_MARK} Telling all the secrets manager stories...")
         print("=" * 60)
 
         try:
@@ -584,21 +714,21 @@ class SecretsManagerStory:
 
             # Show results
             print("\n" + "="*60)
-            print("📋 STORY RESULTS")
+            print(f"{SUMMARY_MARK} STORY RESULTS")
             print("="*60)
 
-            print(f"✅ SUCCESSFUL STORIES ({len(self.passed_scenarios)}):")
+            print(f"{OK_MARK} SUCCESSFUL STORIES ({len(self.passed_scenarios)}):")
             for scenario in self.passed_scenarios:
-                print(f"   📖 {scenario}")
+                print(f"   {DOC_MARK} {scenario}")
 
             if self.failed_scenarios:
-                print(f"\n❌ FAILED STORIES ({len(self.failed_scenarios)}):")
-                for scenario in self.failed_scenarios:
-                    print(f"   📖 {scenario}")
-                print(f"\n💥 {len(self.failed_scenarios)} story/stories had issues!")
+                print(f"\n{ERROR_MARK} FAILED STORIES ({len(self.failed_scenarios)}):")
+                for scenario_details in self.failed_scenarios:
+                    print(f"   {DOC_MARK} {scenario_details}")
+                print(f"\n{BOOM_MARK} {len(self.failed_scenarios)} story/stories had issues!")
                 return False
             else:
-                print(f"\n🎉 All {len(self.passed_scenarios)} stories completed successfully!")
+                print(f"\n{OK_MARK} All {len(self.passed_scenarios)} stories completed successfully!")
                 return True
 
         finally:

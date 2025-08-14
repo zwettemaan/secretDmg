@@ -2,8 +2,6 @@
 
 **Version 1.0.6**
 
-NOTE 20250815: Windows version is not working yet. Mac and Linux seem to work fine
-
 A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 
 **Author:** Kris Coppieters (kris@rorohiko.com)

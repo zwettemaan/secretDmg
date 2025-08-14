@@ -1,6 +1,6 @@
 # Cross-Platform Secrets Manager
 
-**Version 1.0.5**
+**Version 1.0.6**
 
 A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 

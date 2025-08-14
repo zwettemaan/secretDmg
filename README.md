@@ -741,26 +741,6 @@ python secrets_manager.py change-password
 
 ### Windows-Specific Issues
 
-**"UnicodeEncodeError: 'charmap' codec can't encode character"**
-```cmd
-REM The tool now automatically detects Windows and uses text symbols instead of emoji
-REM This should be fixed in the latest version, but if you still see issues:
-
-REM Solution 1: Set UTF-8 encoding for current session
-chcp 65001
-python secrets_manager.py status
-
-REM Solution 2: Set environment variable permanently
-setx PYTHONIOENCODING utf-8
-REM Then restart command prompt and run:
-python secrets_manager.py status
-
-REM Solution 3: Use Windows Terminal (recommended)
-REM Download from Microsoft Store - has better Unicode support
-```
-
-### Windows-Specific Issues
-
 **"python is not recognized as an internal or external command"**
 ```cmd
 REM Solution 1: Use the wrapper script (recommended)

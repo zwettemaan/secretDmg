@@ -1317,7 +1317,7 @@ class SecretsManager:
                 if service_name in result.stdout:
                     # Password stored, but Windows doesn't easily return it
                     # For simplicity, ask for password
-                    return getpass.getpass("Enter secrets password: ")
+                    return get_password_input("Enter secrets password: ")
                 else:
                     return None
 

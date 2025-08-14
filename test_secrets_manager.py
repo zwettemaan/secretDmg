@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Human-readable test suite for secrets_manager.py
+Human-readable test scenarios for secrets_manager.py
 
 This test suite is designed to read like a story, making it easy to understand
 what functionality is being tested without getting lost in implementation details.
@@ -17,8 +17,9 @@ import subprocess
 import platform
 from pathlib import Path
 
-# Import test constants from secrets_manager
-from secrets_manager import TEST_PASSWORD, TEST_NEW_PASSWORD
+# Test mode constants
+TEST_PASSWORD = "test123"
+TEST_NEW_PASSWORD = "newtest456"
 
 # Platform detection for Windows compatibility
 def is_windows():
@@ -27,47 +28,42 @@ def is_windows():
 # Platform-aware emoji/symbols
 if is_windows():
     # Windows-compatible symbols
-    OK_MARK = "[OK]"
-    ERROR_MARK = "[ERROR]"
-    CHECK_MARK = "[CHECK]"
-    DOC_MARK = "[STORY]"
-    CMD_MARK = "[CMD]"
-    FILE_MARK = "[FILE]"
-    FOLDER_MARK = "[FOLDER]"
-    EDIT_MARK = "[EDIT]"
-    HOME_MARK = "[HOME]"
-    BUILD_MARK = "[BUILD]"
-    STATS_MARK = "[STATS]"
-    WARN_MARK = "[WARN]"
-    BOOKS_MARK = "[STORIES]"
-    ROCKET_MARK = "[SETUP]"
-    SUMMARY_MARK = "[RESULTS]"
-    CLEAN_MARK = "[CLEANUP]"
-    BOOM_MARK = "[ISSUES]"
+    OK_MARK       = "[OK]"
+    ERROR_MARK    = "[ERROR]"
+    CHECK_MARK    = "[CHECK]"
+    DOC_MARK      = "[STORY]"
+    CMD_MARK      = "[CMD]"
+    FILE_MARK     = "[FILE]"
+    FOLDER_MARK   = "[FOLDER]"
+    EDIT_MARK     = "[EDIT]"
+    HOME_MARK     = "[HOME]"
+    BUILD_MARK    = "[BUILD]"
+    STATS_MARK    = "[STATS]"
+    WARN_MARK     = "[WARN]"
+    BOOKS_MARK    = "[STORIES]"
+    ROCKET_MARK   = "[SETUP]"
+    SUMMARY_MARK  = "[RESULTS]"
+    CLEAN_MARK    = "[CLEANUP]"
+    BOOM_MARK     = "[ISSUES]"
 else:
     # Unicode emoji for macOS/Linux
-    OK_MARK = "✅"
-    ERROR_MARK = "❌"
-    CHECK_MARK = "🔍"
-    DOC_MARK = "📖"
-    CMD_MARK = "📝"
-    FILE_MARK = "📄"
-    FOLDER_MARK = "📁"
-    EDIT_MARK = "✏️"
-    HOME_MARK = "🏠"
-    BUILD_MARK = "🔨"
-    STATS_MARK = "📊"
-    WARN_MARK = "⚠️"
-    BOOKS_MARK = "📚"
-    ROCKET_MARK = "🚀"
-    SUMMARY_MARK = "📋"
-    CLEAN_MARK = "🧹"
-    BOOM_MARK = "💥"
-    EDIT_MARK = "✏️"
-    HOME_MARK = "🏠"
-    BUILD_MARK = "🏗️"
-    STATS_MARK = "📊"
-    WARN_MARK = "⚠️"
+    OK_MARK       = "\u2705"
+    ERROR_MARK    = "\u274c"
+    CHECK_MARK    = "\U0001F50D"
+    DOC_MARK      = "\U0001F4D6"
+    CMD_MARK      = "\U0001F4DD"
+    FILE_MARK     = "\U0001F4C4"
+    FOLDER_MARK   = "\U0001F4C1"
+    EDIT_MARK     = "\u270F\uFE0F"
+    HOME_MARK     = "\U0001F3E0"
+    BUILD_MARK    = "\U0001F6E0\uFE0F"
+    STATS_MARK    = "\U0001F4CA"
+    WARN_MARK     = "\u26A0\uFE0F"
+    BOOKS_MARK    = "\U0001F4DA"
+    ROCKET_MARK   = "\U0001F680"
+    SUMMARY_MARK  = "\U0001F4CB"
+    CLEAN_MARK    = "\U0001F9F9"
+    BOOM_MARK     = "\U0001F4A5"
 
 class SecretsManagerStory:
     """A story-driven test suite that reads like natural language."""

@@ -39,6 +39,53 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 import secrets as secure_random
 
+# Platform detection for Windows compatibility
+def is_windows():
+    return platform.system() == "Windows"
+
+# Emoji/named symbol constants for consistent use throughout the script
+# Use Windows-compatible alternatives when needed
+if is_windows():
+    # Windows-compatible symbols (avoid problematic Unicode ranges)
+    TICK_MARK      = "[OK]"
+    CROSS_MARK     = "[ERROR]"
+    INFO_MARK      = "[INFO]"
+    KEY_MARK       = "[KEY]"
+    WARNING_MARK   = "[WARNING]"
+    FOLDER_MARK    = "[FOLDER]"
+    LIGHTBULB_MARK = "[TIP]"
+    LOCK_MARK      = "[LOCKED]"
+    UNLOCK_MARK    = "[UNLOCKED]"
+    FILE_MARK      = "[FILE]"
+    DISK_MARK      = "[DISK]"
+    CHECK_MARK     = "[CHECK]"
+    DOT_MARK       = "*"
+    SWEEP_MARK     = "[CLEAN]"
+    ROCKET_MARK    = "[PROJECT]"
+    RECYCLE_MARK   = "[CYCLE]"
+else:
+    # Unicode emoji for macOS/Linux
+    TICK_MARK      = "\u2705"
+    CROSS_MARK     = "\u274c"
+    INFO_MARK      = "\u2139\ufe0f"
+    KEY_MARK       = "\U0001F511"
+    WARNING_MARK   = "\u26A0\uFE0F"
+    FOLDER_MARK    = "\U0001F4C1"
+    LIGHTBULB_MARK = "\U0001F4A1"
+    LOCK_MARK      = "\U0001F512"
+    UNLOCK_MARK    = "\U0001F513"
+    FILE_MARK      = "\U0001F4C2"
+    DISK_MARK      = "\U0001F4BE"
+    CHECK_MARK     = "\u2714"
+    DOT_MARK       = "\u2022"
+    SWEEP_MARK     = "\U0001F9F9"
+    ROCKET_MARK    = "\U0001F680"
+    RECYCLE_MARK   = "\U0001F504"
+
+# Global variable to track test mode
+_TEST_MODE = False
+TEST_PASSWORD = "test123"
+
 # Windows credential management
 if platform.system() == "Windows":
     import ctypes
@@ -47,7 +94,7 @@ if platform.system() == "Windows":
     # Windows Credential Management API structures and constants
     CRED_TYPE_GENERIC = 1
     CRED_PERSIST_LOCAL_MACHINE = 2
-    
+
     class CREDENTIAL(ctypes.Structure):
         _fields_ = [
             ('Flags', wintypes.DWORD),
@@ -68,10 +115,10 @@ if platform.system() == "Windows":
         """Read credential from Windows Credential Manager using Win32 API."""
         try:
             advapi32 = ctypes.windll.advapi32
-            
+
             # Prepare arguments for CredRead
             credential_ptr = ctypes.POINTER(CREDENTIAL)()
-            
+
             # Call CredRead
             result = advapi32.CredReadW(
                 ctypes.c_wchar_p(target_name),
@@ -79,22 +126,22 @@ if platform.system() == "Windows":
                 0,  # Reserved, must be 0
                 ctypes.byref(credential_ptr)
             )
-            
+
             if result:
                 # Successfully read credential
                 cred = credential_ptr.contents
                 password_size = cred.CredentialBlobSize
                 password_data = ctypes.string_at(cred.CredentialBlob, password_size)
                 password = password_data.decode('utf-8')
-                
+
                 # Free the credential
                 advapi32.CredFree(credential_ptr)
-                
+
                 return password
             else:
                 # Failed to read credential
                 return None
-                
+
         except Exception:
             # Silently fail - credential doesn't exist or other error
             return None
@@ -103,23 +150,23 @@ if platform.system() == "Windows":
         """Write credential to Windows Credential Manager using Win32 API."""
         try:
             advapi32 = ctypes.windll.advapi32
-            
+
             # Prepare credential structure
             cred = CREDENTIAL()
             cred.Type = CRED_TYPE_GENERIC
             cred.TargetName = target_name
             cred.UserName = username
             cred.Persist = CRED_PERSIST_LOCAL_MACHINE
-            
+
             password_bytes = password.encode('utf-8')
             cred.CredentialBlob = ctypes.cast(ctypes.c_char_p(password_bytes), wintypes.LPBYTE)
             cred.CredentialBlobSize = len(password_bytes)
-            
+
             # Call CredWrite
             result = advapi32.CredWriteW(ctypes.byref(cred), 0)
-            
+
             return bool(result)
-            
+
         except Exception:
             return False
 
@@ -127,68 +174,18 @@ if platform.system() == "Windows":
         """Delete credential from Windows Credential Manager using Win32 API."""
         try:
             advapi32 = ctypes.windll.advapi32
-            
+
             # Call CredDelete
             result = advapi32.CredDeleteW(
                 ctypes.c_wchar_p(target_name),
                 CRED_TYPE_GENERIC,
                 0  # Reserved, must be 0
             )
-            
+
             return bool(result)
-            
+
         except Exception:
             return False
-
-# Platform detection for Windows compatibility
-def is_windows():
-    return platform.system() == "Windows"
-
-# Emoji/named symbol constants for consistent use throughout the script
-# Use Windows-compatible alternatives when needed
-if is_windows():
-    # Windows-compatible symbols (avoid problematic Unicode ranges)
-    TICK_MARK = "[OK]"
-    CROSS_MARK = "[ERROR]"
-    INFO_MARK = "[INFO]"
-    KEY_MARK = "[KEY]"
-    WARNING_MARK = "[WARNING]"
-    FOLDER_MARK = "[FOLDER]"
-    LIGHTBULB_MARK = "[TIP]"
-    LOCK_MARK = "[LOCKED]"
-    UNLOCK_MARK = "[UNLOCKED]"
-    FILE_MARK = "[FILE]"
-    DISK_MARK = "[DISK]"
-    CHECK_MARK = "[CHECK]"
-    DOT_MARK = "*"
-    SWEEP_MARK = "[CLEAN]"
-    ROCKET_MARK = "[PROJECT]"
-    RECYCLE_MARK = "[CYCLE]"
-else:
-    # Unicode emoji for macOS/Linux
-    TICK_MARK = "\u2705"
-    CROSS_MARK = "\u274c"
-    INFO_MARK = "\u2139\ufe0f"
-    KEY_MARK = "\U0001F511"
-    WARNING_MARK = "\u26A0\uFE0F"
-    FOLDER_MARK = "\U0001F4C1"
-    LIGHTBULB_MARK = "\U0001F4A1"
-    LOCK_MARK = "\U0001F512"
-    UNLOCK_MARK = "\U0001F513"
-    FILE_MARK = "\U0001F4C2"
-    DISK_MARK = "\U0001F4BE"
-    CHECK_MARK = "\u2714"
-    DOT_MARK = "\u2022"
-    SWEEP_MARK = "\U0001F9F9"
-    ROCKET_MARK = "\U0001F680"
-    RECYCLE_MARK = "\U0001F504"
-
-# Global variable to track test mode
-_TEST_MODE = False
-
-# Test mode constants
-TEST_PASSWORD = "test123"
-TEST_NEW_PASSWORD = "newtest456"
 
 def get_password_input(prompt: str, test_password: str = None) -> str:
     """Get password input - uses test_password if provided, otherwise from stdin in test mode, getpass otherwise."""
@@ -862,7 +859,7 @@ class SecretsManager:
                     break
                 else:
                     # No encrypted file exists, so this is a fresh setup - ask for password
-                    password = get_password_input(f"Enter password for project '{self.project_name}': ", 
+                    password = get_password_input(f"Enter password for project '{self.project_name}': ",
                                                 TEST_PASSWORD if _TEST_MODE else None)
                     if not password:
                         break

@@ -27,7 +27,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 
 The tool allows you to embed the secrets within your project as an encrypted file. This encrypted file can safely be stored in a public repository.
 
-The default API is very simple. 
+The default API is very simple.
 
 When you need access to the secrets, for example in a build script, you 'mount' the secrets. Once you are done, you 'unmount' them again.
 
@@ -74,6 +74,7 @@ Of course, there are commands to manage various aspects of the system. Read on..
 - [Commands Reference](#-commands-reference)
 - [Team Workflows](#-team-workflows)
 - [Security](#-security)
+- [PHP Web Development](#-php-web-development)
 - [Platform-Specific Notes](#-platform-specific-notes)
 - [Testing](#-testing)
 - [Troubleshooting](#-troubleshooting)
@@ -572,6 +573,340 @@ git commit -m "Security reset - new secrets generated"
 - [ ] Revoke old credentials in all services
 - [ ] Update CI/CD and infrastructure
 - [ ] Review and improve security practices
+
+## 🌐 PHP Web Development
+
+For PHP developers building web applications, this tool provides seamless secrets management without the complexity of dedicated secrets services. The PHP library integrates directly with your web applications to securely access encrypted secrets.
+
+### Quick Setup for PHP Projects
+
+1. **Install the PHP library** in your project:
+```bash
+# Copy the PHP library to your project
+cp SecretsManagerLib.php /path/to/your/webapp/
+```
+
+2. **Create secrets using Python** (one-time setup):
+```bash
+# Set up secrets for your web project
+python secrets_manager.py create --project="MyWebApp"
+
+# Add your web app secrets
+echo "DB_HOST=localhost" > secrets/.env
+echo "DB_USER=webapp_user" > secrets/.env
+echo "DB_PASS=secure_password_123" >> secrets/.env
+echo "API_KEY=your_stripe_api_key" >> secrets/.env
+echo "JWT_SECRET=your_jwt_signing_key" >> secrets/.env
+
+# Encrypt and prepare for deployment
+python secrets_manager.py unmount
+```
+
+3. **Deploy encrypted secrets** with your application:
+```bash
+# These files go with your web app deployment
+.MyWebApp.secrets          # Encrypted secrets (safe to deploy)
+.secrets_keychain_entry    # Keychain reference
+SecretsManagerLib.php      # PHP library
+```
+
+### Web Application Integration
+
+#### Basic Integration
+```php
+<?php
+require_once 'SecretsManagerLib.php';
+
+try {
+    $secrets = new SecretsManager();
+
+    // Get database credentials
+    $envVars = $secrets->readEnvFile('.env');
+
+    // Connect to database
+    $pdo = new PDO(
+        "mysql:host={$envVars['DB_HOST']};dbname=myapp",
+        $envVars['DB_USER'],
+        $envVars['DB_PASS']
+    );
+
+} catch (Exception $e) {
+    error_log("Failed to load secrets: " . $e->getMessage());
+    die("Configuration error");
+}
+?>
+```
+
+#### Laravel Integration
+```php
+<?php
+// In your AppServiceProvider or bootstrap file
+use Illuminate\Support\Facades\Config;
+
+try {
+    $secrets = new SecretsManager();
+    $envVars = $secrets->readEnvFile('.env');
+
+    // Set Laravel config values
+    Config::set('database.connections.mysql.host', $envVars['DB_HOST']);
+    Config::set('database.connections.mysql.username', $envVars['DB_USER']);
+    Config::set('database.connections.mysql.password', $envVars['DB_PASS']);
+    Config::set('services.stripe.secret', $envVars['STRIPE_SECRET_KEY']);
+
+} catch (Exception $e) {
+    \Log::error('Secrets loading failed: ' . $e->getMessage());
+}
+?>
+```
+
+#### WordPress Integration
+```php
+<?php
+// In wp-config.php or a custom plugin
+require_once __DIR__ . '/SecretsManagerLib.php';
+
+try {
+    $secrets = new SecretsManager();
+    $envVars = $secrets->readEnvFile('.env');
+
+    // WordPress database configuration
+    define('DB_NAME', $envVars['DB_NAME']);
+    define('DB_USER', $envVars['DB_USER']);
+    define('DB_PASSWORD', $envVars['DB_PASS']);
+    define('DB_HOST', $envVars['DB_HOST']);
+
+    // WordPress security salts from secrets
+    $salts = $secrets->readSecrets('wp-salts.txt');
+    eval($salts); // Contains define() statements for WP salts
+
+} catch (Exception $e) {
+    error_log('WordPress secrets loading failed: ' . $e->getMessage());
+    wp_die('Configuration error. Please contact administrator.');
+}
+?>
+```
+
+#### Symfony Integration
+```php
+<?php
+// In services.yaml or a custom service
+namespace App\Service;
+
+class SecretsService
+{
+    private $secrets;
+
+    public function __construct()
+    {
+        $this->secrets = new \SecretsManager();
+    }
+
+    public function getDatabaseUrl(): string
+    {
+        $envVars = $this->secrets->readEnvFile('.env');
+        return "mysql://{$envVars['DB_USER']}:{$envVars['DB_PASS']}@{$envVars['DB_HOST']}/myapp";
+    }
+
+    public function getApiKey(string $service): string
+    {
+        $envVars = $this->secrets->readEnvFile('.env');
+        return $envVars[strtoupper($service) . '_API_KEY'] ?? '';
+    }
+}
+```
+
+### Production Deployment Patterns
+
+#### 1. Shared Hosting with cPanel
+```bash
+# Upload via cPanel File Manager or FTP
+public_html/
+├── index.php
+├── SecretsManagerLib.php      # PHP library
+├── .MyWebApp.secrets          # Encrypted secrets
+└── .secrets_keychain_entry    # Keychain reference
+
+# In your PHP application
+$secrets = new SecretsManager();
+$config = $secrets->readEnvFile('.env');
+```
+
+#### 2. VPS/Dedicated Server
+```bash
+# Deploy with your application
+/var/www/myapp/
+├── public/
+├── src/
+├── config/
+│   ├── SecretsManagerLib.php
+│   ├── .MyWebApp.secrets
+│   └── .secrets_keychain_entry
+└── bootstrap.php
+
+# Set up password on server (one-time)
+python3 secrets_manager.py pass  # Enter shared team password
+```
+
+#### 3. Docker Containers
+```dockerfile
+# Dockerfile
+FROM php:8.1-apache
+COPY . /var/www/html/
+COPY SecretsManagerLib.php /var/www/html/
+COPY .MyWebApp.secrets /var/www/html/
+COPY .secrets_keychain_entry /var/www/html/
+
+# In docker-compose.yml
+services:
+  web:
+    build: .
+    environment:
+      - SECRETS_PASSWORD=${SECRETS_PASSWORD}  # Pass via environment
+```
+
+#### 4. CI/CD Pipeline Integration
+```yaml
+# GitHub Actions example
+name: Deploy
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up secrets password
+        run: |
+          echo "${{ secrets.SECRETS_PASSWORD }}" | python3 secrets_manager.py pass
+
+      - name: Test secrets access
+        run: php -r "
+          require 'SecretsManagerLib.php';
+          \$s = new SecretsManager();
+          echo 'Secrets loaded: ' . count(\$s->listFiles()) . ' files';
+        "
+
+      - name: Deploy to server
+        run: rsync -av ./ user@server:/var/www/html/
+```
+
+### Performance Considerations
+
+#### Caching for High-Traffic Sites
+```php
+<?php
+class CachedSecretsManager
+{
+    private static $cache = [];
+    private $secrets;
+
+    public function __construct()
+    {
+        $this->secrets = new SecretsManager();
+    }
+
+    public function getEnvVars(): array
+    {
+        if (!isset(self::$cache['env'])) {
+            self::$cache['env'] = $this->secrets->readEnvFile('.env');
+        }
+        return self::$cache['env'];
+    }
+
+    public function getConfig(string $file): array
+    {
+        if (!isset(self::$cache[$file])) {
+            $content = $this->secrets->readSecrets($file);
+            self::$cache[$file] = json_decode($content, true);
+        }
+        return self::$cache[$file];
+    }
+}
+
+// Usage
+$secrets = new CachedSecretsManager();
+$dbConfig = $secrets->getEnvVars();
+```
+
+#### APCu Caching for Better Performance
+```php
+<?php
+function getSecretsWithCache(): array
+{
+    $cacheKey = 'app_secrets_v1';
+
+    // Try to get from APCu cache
+    $cached = apcu_fetch($cacheKey);
+    if ($cached !== false) {
+        return $cached;
+    }
+
+    // Load from encrypted storage
+    $secrets = new SecretsManager();
+    $envVars = $secrets->readEnvFile('.env');
+
+    // Cache for 1 hour
+    apcu_store($cacheKey, $envVars, 3600);
+
+    return $envVars;
+}
+```
+
+### Security Best Practices for Web Apps
+
+1. **Never expose secrets in error messages**:
+```php
+try {
+    $secrets = new SecretsManager();
+    $config = $secrets->readEnvFile('.env');
+} catch (Exception $e) {
+    error_log('Secrets error: ' . $e->getMessage());  // Log details
+    die('Configuration error');                        // Generic user message
+}
+```
+
+2. **Use environment-specific passwords**:
+```bash
+# Development
+python secrets_manager.py create --project="MyApp-Dev"
+
+# Production
+python secrets_manager.py create --project="MyApp-Prod"
+```
+
+3. **Validate loaded secrets**:
+```php
+$envVars = $secrets->readEnvFile('.env');
+
+$required = ['DB_HOST', 'DB_USER', 'DB_PASS', 'API_KEY'];
+foreach ($required as $key) {
+    if (empty($envVars[$key])) {
+        throw new RuntimeException("Missing required secret: $key");
+    }
+}
+```
+
+4. **Secure file permissions**:
+```bash
+# Set appropriate permissions
+chmod 600 .MyWebApp.secrets
+chmod 600 .secrets_keychain_entry
+chmod 644 SecretsManagerLib.php
+```
+
+### Demo and Testing
+
+Try the complete PHP integration demo:
+```bash
+# Run the full demo (creates secrets, reads with PHP, cleans up)
+./demo_php_integration.sh
+```
+
+This demonstrates:
+- ✅ Python creates and encrypts secrets
+- ✅ PHP reads secrets without password prompts
+- ✅ Multiple file type handling (.env, JSON, certificates)
+- ✅ Complete cleanup after demo
 
 ## 🖥️ Platform-Specific Notes
 

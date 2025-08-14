@@ -17,6 +17,9 @@ import subprocess
 import platform
 from pathlib import Path
 
+# Import test constants from secrets_manager
+from secrets_manager import TEST_PASSWORD, TEST_NEW_PASSWORD
+
 # Platform detection for Windows compatibility
 def is_windows():
     return platform.system() == "Windows"
@@ -259,7 +262,7 @@ class SecretsManagerStory:
 
         try:
             # Chapter 1: Creating secrets
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that("secrets folder is created", self.folder_exists("secrets")):
@@ -306,7 +309,7 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py unmount", should_succeed=False):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py pass", "test123"):
+            if not self.cmd("secrets_manager.py pass", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py mount"):
@@ -343,7 +346,7 @@ class SecretsManagerStory:
 
         try:
             # User wants custom names for their project
-            if not self.cmd("secrets_manager.py create --project my_secret_project --secrets-dir .private_files", "test123"):
+            if not self.cmd("secrets_manager.py create --project my_secret_project --secrets-dir .private_files", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that(f"custom folder '{custom_folder}' is created", self.folder_exists(custom_folder)):
@@ -366,7 +369,7 @@ class SecretsManagerStory:
             if not self.check_that(f"custom folder '{custom_folder}' reappears", self.folder_exists(custom_folder)):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py change-password", ["newpass456", "newpass456"]):
+            if not self.cmd("secrets_manager.py change-password", [TEST_NEW_PASSWORD, TEST_NEW_PASSWORD]):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py unmount"):
@@ -407,7 +410,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User creates vault and checks status
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py status"):
@@ -462,7 +465,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User creates vault successfully
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             self.create_sample_secrets()
@@ -471,7 +474,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # User tries to create vault again (should fail)
-            if not self.cmd("secrets_manager.py create", "test123", should_succeed=False):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD, should_succeed=False):
                 all_steps_passed = False
 
             project_name = os.path.basename(os.getcwd())
@@ -500,7 +503,7 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py status"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py status"):
@@ -520,13 +523,13 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py clear"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py pass", "test123"):
+            if not self.cmd("secrets_manager.py pass", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
 
-            if not self.cmd("secrets_manager.py change-password", ["newpass456", "newpass456"]):
+            if not self.cmd("secrets_manager.py change-password", [TEST_NEW_PASSWORD, TEST_NEW_PASSWORD]):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py destroy", "DELETE"):
@@ -559,7 +562,7 @@ class SecretsManagerStory:
             print(f"  {HOME_MARK} Testing default folder behavior...")
             project_name = os.path.basename(os.getcwd())
 
-            if not self.cmd("secrets_manager.py create", "test123"):
+            if not self.cmd("secrets_manager.py create", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that("default secrets folder exists", self.folder_exists("secrets")):
@@ -595,7 +598,7 @@ class SecretsManagerStory:
             custom_project = "test_custom"
             custom_folder = "my_special_secrets"
 
-            if not self.cmd(f"secrets_manager.py create --project {custom_project} --secrets-dir {custom_folder}", "test123"):
+            if not self.cmd(f"secrets_manager.py create --project {custom_project} --secrets-dir {custom_folder}", TEST_PASSWORD):
                 all_steps_passed = False
 
             if not self.check_that(f"custom folder '{custom_folder}' exists", self.folder_exists(custom_folder)):

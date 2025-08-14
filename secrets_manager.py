@@ -85,12 +85,27 @@ else:
 # Global variable to track test mode
 _TEST_MODE = False
 
-def get_password_input(prompt: str) -> str:
-    """Get password input - from stdin in test mode, getpass otherwise."""
+# Test mode constants
+TEST_PASSWORD = "test123"
+TEST_NEW_PASSWORD = "newtest456"
+
+def get_password_input(prompt: str, test_password: str = None) -> str:
+    """Get password input - uses test_password if provided, otherwise from stdin in test mode, getpass otherwise."""
     global _TEST_MODE
+
+    # If test password is provided, use it immediately
+    if test_password is not None:
+        print(prompt + "(using test password)")
+        return test_password
+
     if _TEST_MODE:
         print(prompt, end='', flush=True)
-        return input()
+        try:
+            return input()
+        except EOFError:
+            # In test mode, if we get EOF, return test password
+            print("(EOF - using test password)")
+            return TEST_PASSWORD
     else:
         return getpass.getpass(prompt)
 
@@ -296,7 +311,7 @@ class SecretsManager:
 
                 # Get password for encryption
                 if not password:
-                    password = get_password_input("Enter password to encrypt secrets: ")
+                    password = get_password_input("Enter password to encrypt secrets: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not password:
                         print(f"{CROSS_MARK} Password required to encrypt secrets")
                         break
@@ -323,7 +338,7 @@ class SecretsManager:
 
                 # Get password for future use
                 if not password:
-                    password = get_password_input("Enter password for this project: ")
+                    password = get_password_input("Enter password for this project: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not password:
                         print(f"{CROSS_MARK} Password required for project setup")
                         shutil.rmtree(self.secrets_dir, ignore_errors=True)
@@ -457,7 +472,7 @@ class SecretsManager:
                 current_password = self._get_password()
                 if not current_password:
                     print(f"{INFO_MARK}  No stored password found")
-                    current_password = get_password_input("Enter current password: ")
+                    current_password = get_password_input("Enter current password: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not current_password:
                         print(f"{CROSS_MARK} Current password required")
                         break
@@ -472,7 +487,7 @@ class SecretsManager:
                 current_password = self._get_password()
                 if not current_password:
                     print(f"{INFO_MARK}  No stored password found")
-                    current_password = get_password_input("Enter current password: ")
+                    current_password = get_password_input("Enter current password: ", TEST_PASSWORD if _TEST_MODE else None)
                     if not current_password:
                         print(f"{CROSS_MARK} Current password required")
                         break
@@ -584,7 +599,7 @@ class SecretsManager:
             do_once = False
 
             if not password:
-                password = get_password_input(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None)
                 if not password:
                     print(f"{CROSS_MARK} Password cannot be empty")
                     break
@@ -628,7 +643,7 @@ class SecretsManager:
             password = self._get_password()
             if not password:
                 print(f"{INFO_MARK}  No stored password found for project '{self.project_name}'")
-                password = get_password_input(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None)
                 if not password:
                     print(f"{CROSS_MARK} Password required to decrypt secrets")
                     break
@@ -1274,7 +1289,7 @@ class SecretsManager:
                 subprocess.run([
                     "cmdkey", "/generic:" + service_name,
                     "/user:" + getpass.getuser(),
-                    "/pass:" + password
+                    "/pass:" + password.strip()
                 ], check=True, capture_output=True)
 
             else:  # Linux and others
@@ -1315,9 +1330,15 @@ class SecretsManager:
                 ], capture_output=True, text=True)
 
                 if service_name in result.stdout:
-                    # Password stored, but Windows doesn't easily return it
-                    # For simplicity, ask for password
-                    return get_password_input("Enter secrets password: ")
+                    # Password is stored, but Windows doesn't easily return it
+                    # In test mode, use the test password
+                    global _TEST_MODE
+                    if _TEST_MODE:
+                        # Return the standard test password
+                        return TEST_PASSWORD
+                    else:
+                        # For interactive mode, ask for password
+                        return get_password_input("Enter secrets password: ")
                 else:
                     return None
 

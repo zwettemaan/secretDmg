@@ -1,6 +1,6 @@
 # Cross-Platform Secrets Manager
 
-**Version 1.0.3**
+**Version 1.0.4**
 
 A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 
@@ -23,8 +23,22 @@ This software is provided "as is", without warranty of any kind, express or impl
 - **🛡️ Defensive Programming**: Robust error handling and secure cleanup
 - **📦 Zero Dependencies**: Single Python script using only standard library
 
+## 🆚 Comparison with Other Tools
+
+| Feature | This Tool | git-crypt | SOPS | 1Password CLI | Vault |
+|---------|-----------|-----------|------|---------------|-------|
+| **Cross-platform** | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **Zero dependencies** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Simple setup** | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Git integration** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Team sharing** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **No infrastructure** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Change detection** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Free** | ✅ | ✅ | ✅ | ❌ | ❌ |
+
 ## 📋 Table of Contents
 
+- [Comparison with Other Tools](#-comparison-with-other-tools)
 - [Quick Start](#-quick-start)
 - [Installation](#-installation)
 - [Usage](#-usage)
@@ -55,8 +69,12 @@ git commit -m "Add encrypted secrets"
 
 # 5. Later, decrypt when you need to work
 python secrets_manager.py mount
-# Edit or use files in secrets/
+# Edit files in secrets/
 python secrets_manager.py unmount
+
+# 6. Security operations as needed
+python secrets_manager.py change-password  # Rotate password
+python secrets_manager.py destroy          # Remove everything
 ```
 
 ## 📦 Installation
@@ -73,7 +91,7 @@ chmod +x secrets_manager.py
 
 # Or clone the repository
 git clone https://github.com/zwettemaan/secretDmg.git
-cd secrets-manager
+cd secretDmg
 ```
 
 ### Optional: Add to PATH
@@ -87,17 +105,16 @@ sudo chmod +x /usr/local/bin/secrets_manager
 
 ### Basic Workflow
 
-1. **Create Project**: `python secrets_manager.py create`
+1. **Add Secrets Infrastructure To Project**: `python secrets_manager.py create`
    - Creates empty `secrets/` folder
-   - Prompts for password and stores in keychain/keyring
+   - Prompts for password and stores in keychain
    - Adds `secrets/` to `.gitignore`
 
-2. **Provide Secrets**: Place your secret files in `secrets/` folder, for example:
+2. **Add Secrets**: Place your secret files in `secrets/` folder
    - `.env` files
    - SSL certificates (`.pem`, `.key`)
    - API keys
    - Database passwords
-   - License files for dev tools
    - Any sensitive configuration
 
 3. **Encrypt**: `python secrets_manager.py unmount`
@@ -114,13 +131,15 @@ sudo chmod +x /usr/local/bin/secrets_manager
 myproject/
 ├── .gitignore                    # Auto-updated
 ├── .myproject.secrets           # Encrypted (safe to commit)
-├── .secrets_keychain_entry      # Keychain ID (safe to commit)
+├── .secrets_keychain_entry      # Config: keychain ID, project settings (safe to commit)
 └── secrets/                     # Working directory (git-ignored)
     ├── .env
     ├── ssl_cert.pem
     ├── database.conf
     └── secrets_manager.hash     # Change detection
 ```
+
+**Configuration Persistence**: When you run `create` with `--project` or `--secrets-dir`, these settings are automatically saved in `.secrets_keychain_entry` and used by all subsequent commands (`mount`, `unmount`, etc.).
 
 ## 📖 Commands Reference
 
@@ -142,11 +161,14 @@ python secrets_manager.py create --secrets-dir private
 python secrets_manager.py create --password mypassword
 ```
 
+**⚠️ Important**: The `--project` and `--secrets-dir` settings are automatically saved and used by all other commands. You only need to specify them once during `create`.
+
 ### `mount` - Decrypt Secrets
 ```bash
 python secrets_manager.py mount
 ```
-- Decrypts `.projectname.secrets` to `secrets/` folder
+- Automatically detects project name and secrets directory from previous `create`
+- Decrypts `.projectname.secrets` to correct folder
 - Uses stored password or prompts if not available
 - Offers to store password in keychain for future use
 
@@ -156,7 +178,7 @@ python secrets_manager.py unmount
 ```
 - Encrypts `secrets/` folder to `.projectname.secrets`
 - Deletes `secrets/` folder
-- Skips re-encryption if no changes detected (prevents git pollution)
+- Skips re-encryption if no changes to secrets detected (prevents git pollution)
 
 ### `pass` - Store Password
 ```bash
@@ -171,6 +193,24 @@ python secrets_manager.py clear
 ```
 - Removes password from OS credential store
 - Useful for security cleanup or troubleshooting
+
+### `change-password` - Change Project Password
+```bash
+python secrets_manager.py change-password
+```
+- Changes the encryption password for the project
+- Re-encrypts all secrets with new password
+- Prompts for current and new passwords
+- Updates stored password in keychain
+
+### `destroy` - Permanently Delete Secrets And Password
+```bash
+python secrets_manager.py destroy
+```
+- **⚠️ DESTRUCTIVE**: Permanently deletes all project secrets
+- Removes encrypted file, keychain entries, config files
+- Requires typing 'DELETE' to confirm
+- Use for security cleanup or project removal
 
 ### `status` - Show Current State
 ```bash
@@ -229,15 +269,19 @@ git commit -m "Update API keys"
 
 ### Password Rotation
 ```bash
-# Team lead updates password
-python secrets_manager.py mount
-python secrets_manager.py clear              # Clear old password
-python secrets_manager.py pass               # Store new password
-python secrets_manager.py unmount
+# Change project password
+python secrets_manager.py change-password
 
 # Team members update their stored password
 python secrets_manager.py clear              # Clear old password  
 python secrets_manager.py pass               # Store new shared password
+```
+
+### Project Cleanup
+```bash
+# Permanently remove all secrets and passwords
+python secrets_manager.py destroy
+# Type: DELETE
 ```
 
 ## 🔒 Security
@@ -270,6 +314,81 @@ python secrets_manager.py pass               # Store new shared password
 - **macOS**: Uses Keychain for password storage
 - **Windows**: Uses Credential Manager for password storage  
 - **Linux**: Uses encrypted files in user home directory
+
+## 🚨 Security Breach Response
+
+If you suspect your secrets have been compromised, follow these steps immediately:
+
+### 1. Immediate Actions
+```bash
+# Stop using current secrets immediately
+python secrets_manager.py unmount
+
+# Change the encryption password
+python secrets_manager.py change-password
+```
+
+### 2. Refresh All Secret Values
+```bash
+# Mount with new password
+python secrets_manager.py mount
+
+# Replace ALL secret values in secrets/ folder:
+# - Generate new API keys
+# - Create new database passwords  
+# - Regenerate signing certificates
+# - Update any other sensitive data
+
+# Re-encrypt with fresh secrets
+python secrets_manager.py unmount
+```
+
+### 3. Team Coordination
+```bash
+# Notify all team members to update their passwords
+# Each team member should run:
+python secrets_manager.py clear
+python secrets_manager.py pass  # Enter new shared password
+```
+
+### 4. Infrastructure Updates
+- **Revoke compromised credentials** in all services (APIs, databases, etc.)
+- **Rotate signing certificates** with certificate authorities
+- **Update CI/CD systems** with new passwords
+- **Review access logs** for unauthorized usage
+- **Update documentation** with new connection details
+
+### 5. Nuclear Option - Complete Reset
+If compromise is severe, completely start over:
+```bash
+# Completely destroy current secrets and password
+python secrets_manager.py destroy
+# Type: DELETE
+
+# Create fresh project with new secrets
+python secrets_manager.py create
+
+# Regenerate ALL secrets from scratch
+# Commit new encrypted file to git
+git add .myproject.secrets
+git commit -m "Security reset - new secrets generated"
+```
+
+### 6. Prevention for Future
+- **Regular password rotation** (quarterly)
+- **Monitor git history** for accidentally committed secrets
+- **Use strong, unique passwords** for each project
+- **Secure password sharing** (encrypted channels only)
+- **Regular security audits** of who has access
+
+### Emergency Checklist
+- [ ] Stop using current secrets immediately
+- [ ] Change encryption password
+- [ ] Generate new secret values
+- [ ] Notify all team members
+- [ ] Revoke old credentials in all services
+- [ ] Update CI/CD and infrastructure
+- [ ] Review and improve security practices
 
 ## 🖥️ Platform-Specific Notes
 
@@ -329,6 +448,47 @@ chmod 700 secrets/
 python secrets_manager.py unmount
 ```
 
+**"Forgot password"**
+```bash
+# If you remember the password but it's not stored:
+python secrets_manager.py pass
+
+# If password is completely lost:
+# Secrets cannot be recovered - restore from backup or recreate
+```
+
+**"Need to change password after security incident"**
+```bash
+# Change password and re-encrypt all secrets
+python secrets_manager.py change-password
+```
+
+**"Can't find my secrets after custom create"**
+```bash
+# The tool auto-detects project settings from the .projectname.secrets file
+# If you used --project myapp --secrets-dir private, those are automatically used
+python secrets_manager.py status  # Shows detected project name and directory
+```
+
+**"Want to change project name or secrets directory"**
+```bash
+# You need to recreate the project with new settings
+python secrets_manager.py destroy  # Remove current project
+python secrets_manager.py create --project newname --secrets-dir newdir
+```
+
+**"Want to completely remove secrets and passwords"**
+```bash
+# Permanently delete all traces
+python secrets_manager.py destroy
+```
+
+**"Need to rotate passwords regularly"**
+```bash
+# Change password and re-encrypt all secrets
+python secrets_manager.py change-password
+```
+
 ### Debugging
 ```bash
 # Enable verbose logging
@@ -359,8 +519,8 @@ We welcome contributions! Please read our contributing guidelines:
 
 ### Development Setup
 ```bash
-git clone https://github.com/yourusername/secrets-manager.git
-cd secrets-manager
+git clone https://github.com/zwettemaan/secretDmg.git
+cd secretDmg
 python -m pytest tests/  # Run tests
 ```
 
@@ -403,6 +563,8 @@ Please report bugs and feature requests through GitHub Issues:
 - Audit trail through git history
 - Encrypted storage meets security requirements
 - No plaintext secrets in repositories
+- Secure password rotation with `change-password` command
+- Complete data removal capabilities with `destroy` command
 
 ## 🔄 Migration
 
@@ -429,6 +591,17 @@ python secrets_manager.py unmount
 python secrets_manager.py mount
 # Copy files from secrets/ to new tool
 python secrets_manager.py unmount
+
+# Optional: Clean removal when migrating away
+python secrets_manager.py destroy
+```
+
+### Complete Secrets Removal
+```bash
+# When secrets are no longer needed
+python secrets_manager.py destroy
+# Type: DELETE
+# All encrypted files, passwords, and config removed
 ```
 
 ## ⚖️ License
@@ -465,4 +638,4 @@ SOFTWARE.
 
 **Made with ❤️ for developers who care about security**
 
-For more information, visit our [GitHub repository](https://github.com/yourusername/secrets-manager) or [documentation site](https://yourusername.github.io/secrets-manager).
+For more information, visit our [GitHub repository](https://github.com/zwettemaan/secretDmg) or [documentation site](https://zwettemaan.github.io/secretDmg).

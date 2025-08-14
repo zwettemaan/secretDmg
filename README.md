@@ -1,11 +1,11 @@
 # Cross-Platform Secrets Manager
 
-**Version 1.0.4**
+**Version 1.0.5**
 
 A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 
-**Author:** Kris Coppieters (kris@rorohiko.com)  
-**License:** MIT  
+**Author:** Kris Coppieters (kris@rorohiko.com)
+**License:** MIT
 **Built with assistance from:** Claude Sonnet 4
 
 ## ⚠️ Disclaimer
@@ -46,6 +46,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 - [Team Workflows](#-team-workflows)
 - [Security](#-security)
 - [Platform-Specific Notes](#-platform-specific-notes)
+- [Testing](#-testing)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -75,6 +76,9 @@ python secrets_manager.py unmount
 # 6. Security operations as needed
 python secrets_manager.py change-password  # Rotate password
 python secrets_manager.py destroy          # Remove everything
+
+# 7. Verify everything works (optional)
+python test_secrets_manager.py             # Run comprehensive tests
 ```
 
 ## 📦 Installation
@@ -85,13 +89,19 @@ python secrets_manager.py destroy          # Remove everything
 
 ### Download
 ```bash
-# Download the script
+# Download the main script
 curl -O https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py
 chmod +x secrets_manager.py
 
-# Or clone the repository
+# Optionally download the test suite
+curl -O https://raw.githubusercontent.com/zwettemaan/secretDmg/main/test_secrets_manager.py
+
+# Or clone the entire repository
 git clone https://github.com/zwettemaan/secretDmg.git
 cd secretDmg
+
+# Verify installation by running tests
+python test_secrets_manager.py
 ```
 
 ### Optional: Add to PATH
@@ -132,11 +142,13 @@ myproject/
 ├── .gitignore                    # Auto-updated
 ├── .myproject.secrets           # Encrypted (safe to commit)
 ├── .secrets_keychain_entry      # Config: keychain ID, project settings (safe to commit)
-└── secrets/                     # Working directory (git-ignored)
-    ├── .env
-    ├── ssl_cert.pem
-    ├── database.conf
-    └── secrets_manager.hash     # Change detection
+├── secrets/                     # Working directory (git-ignored)
+│   ├── .env
+│   ├── ssl_cert.pem
+│   ├── database.conf
+│   └── secrets_manager.hash     # Change detection
+├── secrets_manager.py           # The tool itself
+└── test_secrets_manager.py      # Comprehensive test suite (optional)
 ```
 
 **Configuration Persistence**: When you run `create` with `--project` or `--secrets-dir`, these settings are automatically saved in `.secrets_keychain_entry` and used by all subsequent commands (`mount`, `unmount`, etc.).
@@ -221,6 +233,7 @@ python secrets_manager.py status
 
 ### Global Options
 - `--verbose, -v`: Enable verbose logging for all commands
+- `--test-mode`: Enable automated testing mode (no interactive prompts)
 
 ## 👥 Team Workflows
 
@@ -273,7 +286,7 @@ git commit -m "Update API keys"
 python secrets_manager.py change-password
 
 # Team members update their stored password
-python secrets_manager.py clear              # Clear old password  
+python secrets_manager.py clear              # Clear old password
 python secrets_manager.py pass               # Store new shared password
 ```
 
@@ -312,7 +325,7 @@ python secrets_manager.py destroy
 
 ### Platform-Specific Security
 - **macOS**: Uses Keychain for password storage
-- **Windows**: Uses Credential Manager for password storage  
+- **Windows**: Uses Credential Manager for password storage
 - **Linux**: Uses encrypted files in user home directory
 
 ## 🚨 Security Breach Response
@@ -335,7 +348,7 @@ python secrets_manager.py mount
 
 # Replace ALL secret values in secrets/ folder:
 # - Generate new API keys
-# - Create new database passwords  
+# - Create new database passwords
 # - Regenerate signing certificates
 # - Update any other sensitive data
 
@@ -418,6 +431,88 @@ ls ~/.secrets_manager_myproject_abc123
 chmod 700 secrets/
 ```
 
+## 🧪 Testing
+
+This project includes comprehensive test suites to ensure reliability across all platforms and use cases.
+
+### Test Files
+
+- **`test_secrets_manager.py`**: Complete story-driven test suite that validates all functionality
+- **Automated Testing**: Tests run without manual input using `--test-mode` flag
+- **Human-Readable**: Tests are written as user stories that are easy to understand
+
+### Running Tests
+
+```bash
+# Run the comprehensive test suite
+python test_secrets_manager.py
+
+# The test will automatically:
+# - Test all 8 commands (create, mount, unmount, status, pass, clear, change-password, destroy)
+# - Validate cross-platform compatibility
+# - Test error handling scenarios
+# - Verify team workflow patterns
+# - Check file permissions and security
+```
+
+### Test Scenarios
+
+The test suite covers six comprehensive scenarios:
+
+1. **👤 Basic User Story**: Complete lifecycle from creation to destruction
+2. **⚙️ Custom Configuration**: Testing custom project names and directories
+3. **📊 Status Monitoring**: Validating status reporting in all states
+4. **🚨 Error Handling**: Testing edge cases and error conditions
+5. **📋 Comprehensive Command Coverage**: All 8 commands with various options
+6. **📁 Folder Management**: Default vs custom folder behavior
+
+### Test Output
+
+Tests provide clear, story-driven output:
+```
+🎭 Running Secrets Manager Test Stories...
+
+📖 Story 1: Basic User Story
+  ✅ User creates new secrets vault
+  ✅ User adds secret files to vault
+  ✅ User encrypts vault for safe storage
+  ✅ User decrypts vault for editing
+  ✅ User changes vault password
+  ✅ User destroys vault completely
+  ✅ Basic user story completed successfully
+
+📊 Test Results: 6 scenarios passed, 0 failed
+```
+
+### Development Testing
+
+For development and debugging:
+
+```bash
+# Run with verbose output for debugging
+python test_secrets_manager.py --verbose
+
+# Test specific functionality (manual testing)
+python secrets_manager.py --test-mode create
+python secrets_manager.py --test-mode status
+```
+
+### Cross-Platform Testing
+
+Tests automatically adapt to the current platform:
+- **macOS**: Tests Keychain integration
+- **Windows**: Tests Credential Manager integration
+- **Linux**: Tests encrypted file storage
+- **All Platforms**: Tests file permissions and security
+
+### Continuous Integration
+
+The test suite is designed for CI/CD environments:
+- **Zero dependencies**: Only uses Python standard library
+- **Non-interactive**: All tests run automatically
+- **Fast execution**: Complete test suite runs in under 30 seconds
+- **Clear output**: Easy to parse results for CI systems
+
 ## 🛠️ Troubleshooting
 
 ### Common Issues
@@ -494,6 +589,13 @@ python secrets_manager.py change-password
 # Enable verbose logging
 python secrets_manager.py --verbose mount
 python secrets_manager.py -v status
+
+# Run comprehensive tests to identify issues
+python test_secrets_manager.py
+
+# Test specific commands in automated mode
+python secrets_manager.py --test-mode create
+python secrets_manager.py --test-mode status
 ```
 
 ### Recovery Scenarios
@@ -521,7 +623,23 @@ We welcome contributions! Please read our contributing guidelines:
 ```bash
 git clone https://github.com/zwettemaan/secretDmg.git
 cd secretDmg
-python -m pytest tests/  # Run tests
+
+# Run the comprehensive test suite
+python test_secrets_manager.py
+
+# Test specific functionality during development
+python secrets_manager.py --test-mode create
+python secrets_manager.py --test-mode status
+```
+
+### Testing Your Changes
+Before submitting changes, ensure all tests pass:
+```bash
+# Run full test suite
+python test_secrets_manager.py
+
+# Expected output should show all scenarios passing:
+# 📊 Test Results: 6 scenarios passed, 0 failed
 ```
 
 ### Code Style
@@ -632,6 +750,8 @@ SOFTWARE.
 
 - Inspired by the need for simple, secure secret management
 - Built with security and usability in mind
+- Comprehensive test suite ensures reliability across platforms
+- Story-driven testing approach makes validation human-readable
 - Thanks to the Python community for excellent standard library
 
 ---

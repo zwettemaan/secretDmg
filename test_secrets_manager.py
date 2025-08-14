@@ -83,7 +83,7 @@ class SecretsManagerStory:
         print(f"{ROCKET_MARK} Setting up a fresh testing environment...")
 
         self.test_dir = tempfile.mkdtemp(prefix="secrets_test_")
-        print(f"📁 Working in: {self.test_dir}")
+        print(f"{FOLDER_MARK} Working in: {self.test_dir}")
 
         current_script = Path(__file__).parent / "secrets_manager.py"
         self.script_path = Path(self.test_dir) / "secrets_manager.py"
@@ -131,7 +131,10 @@ class SecretsManagerStory:
             return False
 
         if should_succeed and result.returncode != 0:
-            print(f"  {ERROR_MARK} Expected success but failed: {result.stderr}")
+            error_msg = result.stderr.strip() if result.stderr.strip() else result.stdout.strip()
+            if not error_msg:
+                error_msg = f"Command exited with code {result.returncode}"
+            print(f"  {ERROR_MARK} Expected success but failed: {error_msg}")
             return False
         elif not should_succeed and result.returncode == 0:
             print(f"  {ERROR_MARK} Expected failure but succeeded")

@@ -86,7 +86,7 @@ Of course, there are commands to manage various aspects of the system. Read on..
 
 *macOS/Linux:*
 ```bash
-# 1. Create a new secrets project
+# 1. Create a new secrets store
 ./secrets_manager.sh create
 
 # 2. Add your secret files to the secrets/ folder
@@ -115,7 +115,7 @@ git commit -m "Add encrypted secrets"
 
 *Windows:*
 ```cmd
-REM 1. Create a new secrets project
+REM 1. Create a new secrets store
 secrets_manager.bat create
 
 REM 2. Add your secret files to the secrets\ folder
@@ -146,7 +146,7 @@ test_secrets_manager.bat
 
 **macOS/Linux:**
 ```bash
-# 1. Create a new secrets project
+# 1. Create a new secrets store
 python secrets_manager.py create
 
 # 2. Add your secret files to the secrets/ folder
@@ -175,10 +175,8 @@ python test_secrets_manager.py             # Run comprehensive tests
 
 **Windows:**
 ```cmd
-REM Set UTF-8 encoding for proper display
-chcp 65001
 
-REM 1. Create a new secrets project
+REM 1. Create a new secrets store
 python secrets_manager.py create
 
 REM 2. Add your secret files to the secrets\ folder
@@ -283,7 +281,7 @@ test_secrets_manager.bat             # Runs comprehensive tests
 
 ### Basic Workflow
 
-1. **Add Secrets Infrastructure To Project**: `python secrets_manager.py create`
+1. **Add Secrets Store To Project**: `python secrets_manager.py create`
    - Creates empty `secrets/` folder
    - Prompts for password and stores in keychain
    - Adds `secrets/` to `.gitignore`
@@ -327,13 +325,13 @@ myproject/
 
 ## 📖 Commands Reference
 
-### `create` - Initialize New Project
+### `create` - Initialize New Secrets Store
 ```bash
 python secrets_manager.py create [options]
 
 Options:
-  --project NAME         Project name (default: current folder name)
-  --secrets-dir DIR      Secrets directory name (default: secrets)
+  --project NAME         Name of project for which we're managing secrets (default: current folder name)
+  --secrets-dir DIR      Secrets subdirectory name (default: secrets)
   --password PASS        Password for encryption
 ```
 
@@ -351,7 +349,7 @@ python secrets_manager.py create --password mypassword
 ```bash
 python secrets_manager.py mount
 ```
-- Automatically detects project name and secrets directory from previous `create`
+- Automatically detects parent project name and secrets directory from previous `create`
 - Decrypts `.projectname.secrets` to correct folder
 - Uses stored password or prompts if not available
 - Offers to store password in keychain for future use
@@ -378,11 +376,11 @@ python secrets_manager.py clear
 - Removes password from OS credential store
 - Useful for security cleanup or troubleshooting
 
-### `change-password` - Change Project Password
+### `change-password` - Change Secrets Store Password
 ```bash
 python secrets_manager.py change-password
 ```
-- Changes the encryption password for the project
+- Changes the encryption password for the secrets store
 - Re-encrypts all secrets with new password
 - Prompts for current and new passwords
 - Updates stored password in keychain
@@ -391,7 +389,7 @@ python secrets_manager.py change-password
 ```bash
 python secrets_manager.py destroy
 ```
-- **⚠️ DESTRUCTIVE**: Permanently deletes all project secrets
+- **⚠️ DESTRUCTIVE**: Permanently deletes everything related to the secrets store
 - Removes encrypted file, keychain entries, config files
 - Requires typing 'DELETE' to confirm
 - Use for security cleanup or project removal
@@ -400,7 +398,7 @@ python secrets_manager.py destroy
 ```bash
 python secrets_manager.py status
 ```
-- Shows project status and helpful next steps
+- Shows secrets store status and helpful next steps
 - Indicates if secrets are mounted, password stored, etc.
 
 ### Global Options
@@ -409,9 +407,9 @@ python secrets_manager.py status
 
 ## 👥 Team Workflows
 
-### Initial Project Setup (Team Lead)
+### Initial Secrets Store Setup (Team Lead)
 ```bash
-# 1. Create and set up secrets
+# 1. Create and set up secrets store
 python secrets_manager.py create
 echo "API_KEY=prod_key_12345" > secrets/.env
 echo "DB_PASS=super_secret" > secrets/database.conf
@@ -454,7 +452,7 @@ git commit -m "Update API keys"
 
 ### Password Rotation
 ```bash
-# Change project password
+# Change secrets store password
 python secrets_manager.py change-password
 
 # Team members update their stored password
@@ -746,14 +744,14 @@ python secrets_manager.py change-password
 
 **"Can't find my secrets after custom create"**
 ```bash
-# The tool auto-detects project settings from the .projectname.secrets file
+# The tool auto-detects secrets store settings from the .projectname.secrets file
 # If you used --project myapp --secrets-dir private, those are automatically used
 python secrets_manager.py status  # Shows detected project name and directory
 ```
 
 **"Want to change project name or secrets directory"**
 ```bash
-# You need to recreate the project with new settings
+# You need to recreate the secrets store with new settings
 python secrets_manager.py destroy  # Remove current project
 python secrets_manager.py create --project newname --secrets-dir newdir
 ```
@@ -810,7 +808,7 @@ REM Note: Credential deletion is handled automatically by the script
 
 **Testing on Windows**
 ```cmd
-REM Ensure UTF-8 encoding before running tests
+REM Try to enable UTF-8 encoding before running tests
 chcp 65001
 python test_secrets_manager.py
 

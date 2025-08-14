@@ -39,6 +39,11 @@ if is_windows():
     BUILD_MARK = "[BUILD]"
     STATS_MARK = "[STATS]"
     WARN_MARK = "[WARN]"
+    BOOKS_MARK = "[STORIES]"
+    ROCKET_MARK = "[SETUP]"
+    SUMMARY_MARK = "[RESULTS]"
+    CLEAN_MARK = "[CLEANUP]"
+    BOOM_MARK = "[ISSUES]"
 else:
     # Unicode emoji for macOS/Linux
     OK_MARK = "✅"
@@ -48,6 +53,16 @@ else:
     CMD_MARK = "📝"
     FILE_MARK = "📄"
     FOLDER_MARK = "📁"
+    EDIT_MARK = "✏️"
+    HOME_MARK = "🏠"
+    BUILD_MARK = "🔨"
+    STATS_MARK = "📊"
+    WARN_MARK = "⚠️"
+    BOOKS_MARK = "📚"
+    ROCKET_MARK = "🚀"
+    SUMMARY_MARK = "📋"
+    CLEAN_MARK = "🧹"
+    BOOM_MARK = "💥"
     EDIT_MARK = "✏️"
     HOME_MARK = "🏠"
     BUILD_MARK = "🏗️"
@@ -65,7 +80,7 @@ class SecretsManagerStory:
 
     def setup_testing_environment(self):
         """Prepare a clean testing environment."""
-        print("🚀 Setting up a fresh testing environment...")
+        print(f"{ROCKET_MARK} Setting up a fresh testing environment...")
 
         self.test_dir = tempfile.mkdtemp(prefix="secrets_test_")
         print(f"📁 Working in: {self.test_dir}")
@@ -84,7 +99,7 @@ class SecretsManagerStory:
         if self.test_dir and os.path.exists(self.test_dir):
             os.chdir(os.path.dirname(self.test_dir))
             shutil.rmtree(self.test_dir)
-            print(f"🧹 Cleaned up: {self.test_dir}")
+            print(f"{CLEAN_MARK} Cleaned up: {self.test_dir}")
 
         # Clean up temporary files on Windows
         if hasattr(self, '_temp_files_to_cleanup'):
@@ -189,9 +204,24 @@ class SecretsManagerStory:
     def modify_sample_secrets(self, in_folder="secrets"):
         """Modify existing secret files for testing."""
         print(f"  {EDIT_MARK} Modifying secrets in {in_folder}/")
-        secrets_path = Path(in_folder)
-        (secrets_path / ".env").write_text("API_KEY=updated_secret\nDB_PASSWORD=new_password\n")
-        (secrets_path / "new_secret.txt").write_text("This is a new secret file\n")
+        try:
+            secrets_path = Path(in_folder)
+            if not secrets_path.exists():
+                print(f"  [DEBUG] Warning: {in_folder} folder doesn't exist for modification")
+                return self
+                
+            # Modify existing .env file
+            env_file = secrets_path / ".env"
+            if env_file.exists():
+                env_file.write_text("API_KEY=updated_secret\nDB_PASSWORD=new_password\n")
+            
+            # Create new secret file
+            new_secret_file = secrets_path / "new_secret.txt"
+            new_secret_file.write_text("This is a new secret file\n")
+            
+        except Exception as e:
+            print(f"  [DEBUG] Error modifying secrets: {e}")
+            
         return self
 
     def folder_exists(self, folder_name):
@@ -215,9 +245,17 @@ class SecretsManagerStory:
         def check():
             try:
                 secrets_path = Path(in_folder)
-                env_content = (secrets_path / ".env").read_text()
+                if not secrets_path.exists():
+                    return False
+                    
+                env_file = secrets_path / ".env"
+                if not env_file.exists():
+                    return False
+                    
+                env_content = env_file.read_text()
                 return "API_KEY=" in env_content and "DB_PASSWORD=" in env_content
-            except:
+            except Exception as e:
+                print(f"  [DEBUG] Error checking expected content: {e}")
                 return False
         return check
 
@@ -226,10 +264,19 @@ class SecretsManagerStory:
         def check():
             try:
                 secrets_path = Path(in_folder)
-                env_content = (secrets_path / ".env").read_text()
-                new_file_exists = (secrets_path / "new_secret.txt").exists()
-                return "updated_secret" in env_content and new_file_exists
-            except:
+                if not secrets_path.exists():
+                    return False
+                
+                env_file = secrets_path / ".env"
+                new_file = secrets_path / "new_secret.txt"
+                
+                if not env_file.exists() or not new_file.exists():
+                    return False
+                    
+                env_content = env_file.read_text()
+                return "updated_secret" in env_content
+            except Exception as e:
+                print(f"  [DEBUG] Error checking modified content: {e}")
                 return False
         return check
 
@@ -643,7 +690,7 @@ class SecretsManagerStory:
 
     def tell_all_stories(self):
         """Run through all the user stories."""
-        print("📚 Telling all the secrets manager stories...")
+        print(f"{BOOKS_MARK} Telling all the secrets manager stories...")
         print("=" * 60)
 
         try:
@@ -664,7 +711,7 @@ class SecretsManagerStory:
 
             # Show results
             print("\n" + "="*60)
-            print("📋 STORY RESULTS")
+            print(f"{SUMMARY_MARK} STORY RESULTS")
             print("="*60)
 
             print(f"✅ SUCCESSFUL STORIES ({len(self.passed_scenarios)}):")
@@ -675,7 +722,7 @@ class SecretsManagerStory:
                 print(f"\n❌ FAILED STORIES ({len(self.failed_scenarios)}):")
                 for scenario in self.failed_scenarios:
                     print(f"   📖 {scenario}")
-                print(f"\n💥 {len(self.failed_scenarios)} story/stories had issues!")
+                print(f"\n{BOOM_MARK} {len(self.failed_scenarios)} story/stories had issues!")
                 return False
             else:
                 print(f"\n🎉 All {len(self.passed_scenarios)} stories completed successfully!")

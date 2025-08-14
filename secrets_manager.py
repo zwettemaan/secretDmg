@@ -39,6 +39,107 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 import secrets as secure_random
 
+# Windows credential management
+if platform.system() == "Windows":
+    import ctypes
+    from ctypes import wintypes
+
+    # Windows Credential Management API structures and constants
+    CRED_TYPE_GENERIC = 1
+    CRED_PERSIST_LOCAL_MACHINE = 2
+    
+    class CREDENTIAL(ctypes.Structure):
+        _fields_ = [
+            ('Flags', wintypes.DWORD),
+            ('Type', wintypes.DWORD),
+            ('TargetName', wintypes.LPWSTR),
+            ('Comment', wintypes.LPWSTR),
+            ('LastWritten', wintypes.FILETIME),
+            ('CredentialBlobSize', wintypes.DWORD),
+            ('CredentialBlob', wintypes.LPBYTE),
+            ('Persist', wintypes.DWORD),
+            ('AttributeCount', wintypes.DWORD),
+            ('Attributes', ctypes.POINTER(wintypes.LPVOID)),
+            ('TargetAlias', wintypes.LPWSTR),
+            ('UserName', wintypes.LPWSTR),
+        ]
+
+    def _win_read_credential(target_name: str) -> Optional[str]:
+        """Read credential from Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Prepare arguments for CredRead
+            credential_ptr = ctypes.POINTER(CREDENTIAL)()
+            
+            # Call CredRead
+            result = advapi32.CredReadW(
+                ctypes.c_wchar_p(target_name),
+                CRED_TYPE_GENERIC,
+                0,  # Reserved, must be 0
+                ctypes.byref(credential_ptr)
+            )
+            
+            if result:
+                # Successfully read credential
+                cred = credential_ptr.contents
+                password_size = cred.CredentialBlobSize
+                password_data = ctypes.string_at(cred.CredentialBlob, password_size)
+                password = password_data.decode('utf-8')
+                
+                # Free the credential
+                advapi32.CredFree(credential_ptr)
+                
+                return password
+            else:
+                # Failed to read credential
+                return None
+                
+        except Exception:
+            # Silently fail - credential doesn't exist or other error
+            return None
+
+    def _win_write_credential(target_name: str, username: str, password: str) -> bool:
+        """Write credential to Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Prepare credential structure
+            cred = CREDENTIAL()
+            cred.Type = CRED_TYPE_GENERIC
+            cred.TargetName = target_name
+            cred.UserName = username
+            cred.Persist = CRED_PERSIST_LOCAL_MACHINE
+            
+            password_bytes = password.encode('utf-8')
+            cred.CredentialBlob = ctypes.cast(ctypes.c_char_p(password_bytes), wintypes.LPBYTE)
+            cred.CredentialBlobSize = len(password_bytes)
+            
+            # Call CredWrite
+            result = advapi32.CredWriteW(ctypes.byref(cred), 0)
+            
+            return bool(result)
+            
+        except Exception:
+            return False
+
+    def _win_delete_credential(target_name: str) -> bool:
+        """Delete credential from Windows Credential Manager using Win32 API."""
+        try:
+            advapi32 = ctypes.windll.advapi32
+            
+            # Call CredDelete
+            result = advapi32.CredDeleteW(
+                ctypes.c_wchar_p(target_name),
+                CRED_TYPE_GENERIC,
+                0  # Reserved, must be 0
+            )
+            
+            return bool(result)
+            
+        except Exception:
+            return False
+
 # Platform detection for Windows compatibility
 def is_windows():
     return platform.system() == "Windows"
@@ -326,9 +427,9 @@ class SecretsManager:
                 if self._unmount_with_password(password):
                         # Store password for future mount/unmount operations
                         if self._store_password(password):
-                            print(f"{KEY_MARK} Password stored in keychain")
+                            print(f"{KEY_MARK} Password stored in credential store")
                         else:
-                            print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                            print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
                         # Save project configuration for future commands
                         self._save_project_config(self.project_name, self.secrets_dir)
                         print(f"{TICK_MARK} Successfully created encrypted secrets from existing folder")
@@ -352,9 +453,9 @@ class SecretsManager:
 
                 # Store password for future mount/unmount operations
                 if self._store_password(password):
-                    print(f"{KEY_MARK} Password stored in keychain")
+                    print(f"{KEY_MARK} Password stored in credential store")
                 else:
-                    print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                    print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
 
                 # Create helpful README
                 readme_path = os.path.join(self.secrets_dir, "README.txt")
@@ -521,12 +622,12 @@ class SecretsManager:
                             self._cleanup_mount_point()
                         break
 
-                print(f"{RECYCLE_MARK} Updating password in keychain...")
+                print(f"{RECYCLE_MARK} Updating password in credential store...")
 
                 # Clear old password and store new one
                 self._clear_stored_password()
                 if not self._store_password(new_password):
-                    print(f"{WARNING_MARK}  Warning: Could not store new password in keychain")
+                    print(f"{WARNING_MARK}  Warning: Could not store new password in credential store")
 
                 # Stage 3: Unmount with new password (this re-encrypts)
                 print(f"{LOCK_MARK} Re-encrypting with new password...")
@@ -546,7 +647,7 @@ class SecretsManager:
                         print(f"{TICK_MARK} Re-mounted successfully")
 
                 print(f"{TICK_MARK} Password changed successfully!")
-                print(f"{KEY_MARK} New password stored in keychain")
+                print(f"{KEY_MARK} New password stored in credential store")
                 print()
                 print(f"{LIGHTBULB_MARK} Team members will need the new password:")
                 print(f"   python secrets_manager.py clear")
@@ -566,7 +667,7 @@ class SecretsManager:
         return ret_val
 
     def clear_password(self) -> bool:
-        """Remove stored password from keychain for this project."""
+        """Remove stored password from credential store for this project."""
         ret_val = False
         self.logger.info("ENTRY: clear_password")
 
@@ -582,11 +683,11 @@ class SecretsManager:
 
             try:
                 if self._clear_stored_password():
-                    print(f"{TICK_MARK} Password cleared from keychain for project '{self.project_name}'")
+                    print(f"{TICK_MARK} Password cleared from credential store for project '{self.project_name}'")
                     print(f"{LIGHTBULB_MARK} Use 'pass' command to store a new password")
                     ret_val = True
                 else:
-                    print(f"{CROSS_MARK} Failed to clear password from keychain")
+                    print(f"{CROSS_MARK} Failed to clear password from credential store")
                     break
 
             except Exception as e:
@@ -598,7 +699,7 @@ class SecretsManager:
         return ret_val
 
     def store_password(self, password: Optional[str] = None) -> bool:
-        """Store password in keychain for this project."""
+        """Store password in credential store for this project."""
         ret_val = False
         self.logger.info("ENTRY: store_password")
 
@@ -613,11 +714,11 @@ class SecretsManager:
                     break
 
             if self._store_password(password):
-                print(f"{TICK_MARK} Password stored in keychain for project '{self.project_name}'")
+                print(f"{TICK_MARK} Password stored in credential store for project '{self.project_name}'")
                 print(f"{LIGHTBULB_MARK} You can now use 'mount' without entering the password")
                 ret_val = True
             else:
-                print(f"{CROSS_MARK} Failed to store password in keychain")
+                print(f"{CROSS_MARK} Failed to store password in credential store")
                 break
 
         self.logger.info(f"EXIT: store_password, returning: {ret_val}")
@@ -724,12 +825,12 @@ class SecretsManager:
 
                 # Offer to store password if it wasn't stored before
                 if not self._has_stored_password():
-                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in keychain for future use? (y/n): ", True).lower()
+                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in credential store for future use? (y/n): ", True).lower()
                     if response == 'y' or response == 'yes':
                         if self._store_password(password):
-                            print(f"{TICK_MARK} Password stored in keychain")
+                            print(f"{TICK_MARK} Password stored in credential store")
                         else:
-                            print(f"{WARNING_MARK}  Warning: Could not store password in keychain")
+                            print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
 
             except Exception as e:
                 print(f"{CROSS_MARK} Failed to mount secrets: {e}")
@@ -750,6 +851,23 @@ class SecretsManager:
         while do_once:
             do_once = False
 
+            # Get password from stored credentials first
+            password = self._get_password()
+            if not password:
+                # Check if this is a project that was set up before (encrypted file exists)
+                if os.path.exists(self.secrets_file):
+                    print(f"{CROSS_MARK} No stored password found for project '{self.project_name}'")
+                    print(f"{LIGHTBULB_MARK} Store password first with:")
+                    print(f"   python secrets_manager.py pass")
+                    break
+                else:
+                    # No encrypted file exists, so this is a fresh setup - ask for password
+                    password = get_password_input(f"Enter password for project '{self.project_name}': ", 
+                                                TEST_PASSWORD if _TEST_MODE else None)
+                    if not password:
+                        break
+
+            # Check if there's anything to unmount
             if not os.path.exists(self.secrets_dir):
                 print(f"{INFO_MARK}  No secrets folder to unmount")
                 ret_val = True
@@ -757,14 +875,6 @@ class SecretsManager:
 
             if not os.path.isdir(self.secrets_dir):
                 print(f"{CROSS_MARK} {self.secrets_dir} is not a directory")
-                break
-
-            # Get password from stored credentials
-            password = self._get_password()
-            if not password:
-                print(f"{CROSS_MARK} No stored password found for project '{self.project_name}'")
-                print(f"{LIGHTBULB_MARK} Store password first with:")
-                print(f"   python secrets_manager.py pass")
                 break
 
             # Check if secrets have changed since last mount
@@ -1121,18 +1231,8 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                # Delete existing credential (ignore errors if not found)
-                try:
-                    result = subprocess.run([
-                        "cmdkey", "/delete:" + service_name
-                    ], capture_output=True, text=True, timeout=10)
-                    self.logger.info(f"Credential deletion result: {result.returncode}")
-                    if result.stderr:
-                        self.logger.info(f"Deletion stderr: {result.stderr}")
-                except Exception as e:
-                    self.logger.warning(f"Could not delete existing credential: {e}")
-
-                return True  # Consider cleared if delete command runs
+                # Delete credential using Win32 API
+                return _win_delete_credential(service_name)
 
             else:  # Linux and others
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1303,40 +1403,9 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                # Delete any existing credential first (ignore errors)
-                try:
-                    result = subprocess.run([
-                        "cmdkey", "/delete:" + service_name
-                    ], capture_output=True, text=True, timeout=10)
-                    if result.stderr:
-                        self.logger.info(f"Delete stderr: {result.stderr}")
-                except Exception as e:
-                    self.logger.warning(f"Could not delete existing credential: {e}")
-
-                # Add new credential
-                try:
-                    cmd = [
-                        "cmdkey",
-                        "/generic:" + service_name,
-                        "/user:" + getpass.getuser(),
-                        "/pass:" + password.strip()
-                    ]
-                    self.logger.info(f"Running cmdkey command: {cmd[0]} {cmd[1]} {cmd[2]} /pass:***")
-
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-                    if result.returncode == 0:
-                        self.logger.info("Successfully stored credential in Windows Credential Manager")
-                        return True
-                    else:
-                        self.logger.error(f"cmdkey failed with return code {result.returncode}")
-                        self.logger.error(f"stdout: {result.stdout}")
-                        self.logger.error(f"stderr: {result.stderr}")
-                        return False
-
-                except Exception as e:
-                    self.logger.error(f"Exception running cmdkey: {e}")
-                    return False
+                # Store credential using Win32 API
+                username = getpass.getuser()
+                return _win_write_credential(service_name, username, password)
 
             else:  # Linux and others
                 # Store in encrypted file as fallback
@@ -1370,28 +1439,9 @@ class SecretsManager:
                 return result.stdout.strip()
 
             elif self.platform == "windows":
-                # Windows credential retrieval using cmdkey
-                try:
-                    result = subprocess.run([
-                        "cmdkey", "/list:" + service_name
-                    ], capture_output=True, text=True, timeout=10)
-
-                    if result.returncode == 0 and service_name in result.stdout:
-                        # Credential exists, but Windows doesn't return the actual password
-                        # In test mode, we know what password was used
-                        global _TEST_MODE
-                        if _TEST_MODE:
-                            return TEST_PASSWORD
-                        else:
-                            # For interactive mode, ask for password
-                            return get_password_input("Enter secrets password: ")
-                    else:
-                        self.logger.info(f"No credential found for {service_name}")
-                        return None
-
-                except Exception as e:
-                    self.logger.warning(f"Error checking Windows credentials: {e}")
-                    return None
+                # Windows credential retrieval using Win32 API
+                password = _win_read_credential(service_name)
+                return password
 
             else:  # Linux and others
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1430,14 +1480,9 @@ class SecretsManager:
                 return True
 
             elif self.platform == "windows":
-                try:
-                    result = subprocess.run([
-                        "cmdkey", "/list:" + service_name
-                    ], capture_output=True, text=True, timeout=10)
-                    return result.returncode == 0 and service_name in result.stdout
-                except Exception as e:
-                    self.logger.warning(f"Error checking stored credentials: {e}")
-                    return False
+                # Check if credential exists using Win32 API
+                password = _win_read_credential(service_name)
+                return password is not None
 
             else:  # Linux
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1472,8 +1517,8 @@ def main():
         print("  create    Create empty secrets folder (fails if .projectname.secrets already exists)")
         print("  mount     Mount secrets (decrypt .projectname.secrets to folder)")
         print("  unmount   Unmount secrets (encrypt folder to .projectname.secrets)")
-        print("  pass      Store password in keychain for this project")
-        print("  clear     Remove stored password from keychain")
+        print("  pass      Store password in OS credential store for this project")
+        print("  clear     Remove stored password from OS credential store")
         print("  change-password  Change project password (re-encrypts all secrets)")
         print("  destroy   Permanently delete all project secrets and passwords")
         print("  status    Show current status")

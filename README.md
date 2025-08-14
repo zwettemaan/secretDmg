@@ -558,8 +558,9 @@ security find-generic-password -s "secrets_manager_myproject_abc123"
 
 ### Windows
 ```cmd
-# Password stored in Credential Manager
-cmdkey /list:secrets_manager_myproject_abc123
+# Password stored in Credential Manager (Windows API)
+# View stored credentials: Control Panel > Credential Manager > Windows Credentials
+# Look for entries starting with "secrets_manager_"
 
 # Use 'python' not 'python3' on Windows
 python secrets_manager.py create
@@ -575,6 +576,7 @@ chcp 65001
 **Important Notes:**
 - Windows uses `python.exe`, not `python3.exe`
 - Command Prompt has limited Unicode support - use PowerShell or Windows Terminal
+- Credentials are stored using Windows Credential Management API
 - May need to run as Administrator for some operations
 
 ### Linux
@@ -766,15 +768,15 @@ python secrets_manager.py create
 
 **"Credential Manager issues"**
 ```cmd
-REM View stored credentials
-cmdkey /list | findstr secrets_manager
+REM View stored credentials in GUI:
+REM Control Panel > Credential Manager > Windows Credentials
+REM Look for entries starting with "secrets_manager_"
 
-REM Manually remove if corrupted
-cmdkey /delete:secrets_manager_yourproject_abc123
-
-REM Clear and reset password
+REM Clear and reset password using the script:
 python secrets_manager.py clear
 python secrets_manager.py pass
+
+REM Note: Credential deletion is handled automatically by the script
 ```
 
 **Testing on Windows**

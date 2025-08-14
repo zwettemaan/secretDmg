@@ -109,9 +109,15 @@ def get_password_input(prompt: str, test_password: str = None) -> str:
     else:
         return getpass.getpass(prompt)
 
-def get_confirmation_input(prompt: str, auto_confirm: bool = False) -> str:
-    """Get confirmation input - auto-confirm in test mode, input otherwise."""
+def get_confirmation_input(prompt: str, auto_confirm: bool = False, test_response: str = None) -> str:
+    """Get confirmation input - uses test_response if provided, otherwise auto-confirm in test mode, input otherwise."""
     global _TEST_MODE
+
+    # If test response is provided, use it immediately
+    if test_response is not None:
+        print(prompt + test_response)
+        return test_response
+
     if _TEST_MODE and auto_confirm:
         print(prompt + "y")
         return "y"
@@ -395,18 +401,9 @@ class SecretsManager:
                 print(f"   {DOT_MARK} Secrets folder: {self.secrets_dir}/")
             print()
 
-            # In test mode, try to read from stdin, otherwise get interactive input
-            global _TEST_MODE
-            if _TEST_MODE:
-                try:
-                    response = input("Type 'DELETE' to confirm destruction: ")
-                except EOFError:
-                    # No input available, return DELETE for test automation
-                    print("Type 'DELETE' to confirm destruction: DELETE")
-                    response = "DELETE"
-            else:
-                response = get_confirmation_input("Type 'DELETE' to confirm destruction: ")
-                
+            # In test mode, auto-provide DELETE response, otherwise get interactive input
+            response = get_confirmation_input("Type 'DELETE' to confirm destruction: ", False, "DELETE" if _TEST_MODE else None)
+
             if response != 'DELETE':
                 print(f"{CROSS_MARK} Operation cancelled - nothing was deleted")
                 break
@@ -1304,7 +1301,7 @@ class SecretsManager:
                     ], capture_output=True)
                 except:
                     pass  # Ignore if it doesn't exist
-                
+
                 # Now add the new entry
                 subprocess.run([
                     "cmdkey", "/generic:" + service_name,

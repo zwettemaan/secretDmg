@@ -212,19 +212,19 @@ class SecretsManagerStory:
             if not secrets_path.exists():
                 print(f"  [DEBUG] Warning: {in_folder} folder doesn't exist for modification")
                 return self
-                
+
             # Modify existing .env file
             env_file = secrets_path / ".env"
             if env_file.exists():
                 env_file.write_text("API_KEY=updated_secret\nDB_PASSWORD=new_password\n")
-            
+
             # Create new secret file
             new_secret_file = secrets_path / "new_secret.txt"
             new_secret_file.write_text("This is a new secret file\n")
-            
+
         except Exception as e:
             print(f"  [DEBUG] Error modifying secrets: {e}")
-            
+
         return self
 
     def folder_exists(self, folder_name):
@@ -250,11 +250,11 @@ class SecretsManagerStory:
                 secrets_path = Path(in_folder)
                 if not secrets_path.exists():
                     return False
-                    
+
                 env_file = secrets_path / ".env"
                 if not env_file.exists():
                     return False
-                    
+
                 env_content = env_file.read_text()
                 return "API_KEY=" in env_content and "DB_PASSWORD=" in env_content
             except Exception as e:
@@ -269,13 +269,13 @@ class SecretsManagerStory:
                 secrets_path = Path(in_folder)
                 if not secrets_path.exists():
                     return False
-                
+
                 env_file = secrets_path / ".env"
                 new_file = secrets_path / "new_secret.txt"
-                
+
                 if not env_file.exists() or not new_file.exists():
                     return False
-                    
+
                 env_content = env_file.read_text()
                 return "updated_secret" in env_content
             except Exception as e:
@@ -723,8 +723,8 @@ class SecretsManagerStory:
 
             if self.failed_scenarios:
                 print(f"\n{ERROR_MARK} FAILED STORIES ({len(self.failed_scenarios)}):")
-                for scenario, details in self.failed_scenarios:
-                    print(f"   {DOC_MARK} {scenario}: {details}")
+                for scenario_details in self.failed_scenarios:
+                    print(f"   {DOC_MARK} {scenario_details}")
                 print(f"\n{BOOM_MARK} {len(self.failed_scenarios)} story/stories had issues!")
                 return False
             else:

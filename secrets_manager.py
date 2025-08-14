@@ -39,23 +39,48 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 import secrets as secure_random
 
+# Platform detection for Windows compatibility
+def is_windows():
+    return platform.system() == "Windows"
+
 # Emoji/named symbol constants for consistent use throughout the script
-TICK_MARK = "\u2705"
-CROSS_MARK = "\u274c"
-INFO_MARK = "\u2139\ufe0f"
-KEY_MARK = "\U0001F511"
-WARNING_MARK = "\u26A0\uFE0F"
-FOLDER_MARK = "\U0001F4C1"
-LIGHTBULB_MARK = "\U0001F4A1"
-LOCK_MARK = "\U0001F512"
-UNLOCK_MARK = "\U0001F513"
-FILE_MARK = "\U0001F4C2"
-DISK_MARK = "\U0001F4BE"
-CHECK_MARK = "\u2714"
-DOT_MARK = "\u2022"
-SWEEP_MARK = "\U0001F9F9"
-ROCKET_MARK = "\U0001F680"
-RECYCLE_MARK = "\U0001F504"
+# Use Windows-compatible alternatives when needed
+if is_windows():
+    # Windows-compatible symbols (avoid problematic Unicode ranges)
+    TICK_MARK = "[OK]"
+    CROSS_MARK = "[ERROR]"
+    INFO_MARK = "[INFO]"
+    KEY_MARK = "[KEY]"
+    WARNING_MARK = "[WARNING]"
+    FOLDER_MARK = "[FOLDER]"
+    LIGHTBULB_MARK = "[TIP]"
+    LOCK_MARK = "[LOCKED]"
+    UNLOCK_MARK = "[UNLOCKED]"
+    FILE_MARK = "[FILE]"
+    DISK_MARK = "[DISK]"
+    CHECK_MARK = "[CHECK]"
+    DOT_MARK = "*"
+    SWEEP_MARK = "[CLEAN]"
+    ROCKET_MARK = "[PROJECT]"
+    RECYCLE_MARK = "[CYCLE]"
+else:
+    # Unicode emoji for macOS/Linux
+    TICK_MARK = "\u2705"
+    CROSS_MARK = "\u274c"
+    INFO_MARK = "\u2139\ufe0f"
+    KEY_MARK = "\U0001F511"
+    WARNING_MARK = "\u26A0\uFE0F"
+    FOLDER_MARK = "\U0001F4C1"
+    LIGHTBULB_MARK = "\U0001F4A1"
+    LOCK_MARK = "\U0001F512"
+    UNLOCK_MARK = "\U0001F513"
+    FILE_MARK = "\U0001F4C2"
+    DISK_MARK = "\U0001F4BE"
+    CHECK_MARK = "\u2714"
+    DOT_MARK = "\u2022"
+    SWEEP_MARK = "\U0001F9F9"
+    ROCKET_MARK = "\U0001F680"
+    RECYCLE_MARK = "\U0001F504"
 
 # Global variable to track test mode
 _TEST_MODE = False

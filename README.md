@@ -53,6 +53,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 
 ## ⚡ Quick Start
 
+**macOS/Linux:**
 ```bash
 # 1. Create a new secrets project
 python secrets_manager.py create
@@ -81,6 +82,38 @@ python secrets_manager.py destroy          # Remove everything
 python test_secrets_manager.py             # Run comprehensive tests
 ```
 
+**Windows:**
+```cmd
+REM Set UTF-8 encoding for proper display
+chcp 65001
+
+REM 1. Create a new secrets project
+python secrets_manager.py create
+
+REM 2. Add your secret files to the secrets\ folder
+echo API_KEY=super_secret_key > secrets\.env
+echo DATABASE_URL=postgres://... > secrets\database.conf
+
+REM 3. Encrypt and clean up
+python secrets_manager.py unmount
+
+REM 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+REM 5. Later, decrypt when you need to work
+python secrets_manager.py mount
+REM Edit files in secrets\
+python secrets_manager.py unmount
+
+REM 6. Security operations as needed
+python secrets_manager.py change-password
+python secrets_manager.py destroy
+
+REM 7. Verify everything works (optional)
+python test_secrets_manager.py
+```
+
 ## 📦 Installation
 
 ### Prerequisites
@@ -88,6 +121,8 @@ python test_secrets_manager.py             # Run comprehensive tests
 - Git (for version control)
 
 ### Download
+
+**macOS/Linux:**
 ```bash
 # Download the main script
 curl -O https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py
@@ -101,6 +136,21 @@ git clone https://github.com/zwettemaan/secretDmg.git
 cd secretDmg
 
 # Verify installation by running tests
+python test_secrets_manager.py
+```
+
+**Windows:**
+```cmd
+REM Download using PowerShell (recommended for Unicode support)
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/zwettemaan/secretDmg/main/secrets_manager.py' -OutFile 'secrets_manager.py'"
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/zwettemaan/secretDmg/main/test_secrets_manager.py' -OutFile 'test_secrets_manager.py'"
+
+REM Or clone the repository
+git clone https://github.com/zwettemaan/secretDmg.git
+cd secretDmg
+
+REM Set UTF-8 encoding and verify installation
+chcp 65001
 python test_secrets_manager.py
 ```
 
@@ -414,13 +464,25 @@ security find-generic-password -s "secrets_manager_myproject_abc123"
 ```
 
 ### Windows
-```bash
+```cmd
 # Password stored in Credential Manager
 cmdkey /list:secrets_manager_myproject_abc123
 
-# Use Command Prompt or PowerShell
+# Use 'python' not 'python3' on Windows
 python secrets_manager.py create
+
+# For best Unicode support, use PowerShell or Windows Terminal
+powershell
+python secrets_manager.py create
+
+# Set UTF-8 encoding if you see Unicode errors
+chcp 65001
 ```
+
+**Important Notes:**
+- Windows uses `python.exe`, not `python3.exe`
+- Command Prompt has limited Unicode support - use PowerShell or Windows Terminal
+- May need to run as Administrator for some operations
 
 ### Linux
 ```bash
@@ -582,6 +644,68 @@ python secrets_manager.py destroy
 ```bash
 # Change password and re-encrypt all secrets
 python secrets_manager.py change-password
+```
+
+### Windows-Specific Issues
+
+**"UnicodeEncodeError: 'charmap' codec can't encode character"**
+```cmd
+REM The tool now automatically detects Windows and uses text symbols instead of emoji
+REM This should be fixed in the latest version, but if you still see issues:
+
+REM Solution 1: Set UTF-8 encoding for current session
+chcp 65001
+python secrets_manager.py status
+
+REM Solution 2: Set environment variable permanently
+setx PYTHONIOENCODING utf-8
+REM Then restart command prompt and run:
+python secrets_manager.py status
+
+REM Solution 3: Use Windows Terminal (recommended)
+REM Download from Microsoft Store - has better Unicode support
+```
+
+**"'python3' is not recognized as an internal or external command"**
+```cmd
+REM Windows uses 'python' not 'python3'
+python secrets_manager.py create
+python test_secrets_manager.py
+
+REM If you need python3 command, create a copy:
+copy "C:\Python311\python.exe" "C:\Python311\python3.exe"
+REM (adjust path to your Python installation)
+```
+
+**"Access denied" or permission errors**
+```cmd
+REM Run Command Prompt as Administrator
+REM Right-click Command Prompt → "Run as administrator"
+python secrets_manager.py create
+```
+
+**"Credential Manager issues"**
+```cmd
+REM View stored credentials
+cmdkey /list | findstr secrets_manager
+
+REM Manually remove if corrupted
+cmdkey /delete:secrets_manager_yourproject_abc123
+
+REM Clear and reset password
+python secrets_manager.py clear
+python secrets_manager.py pass
+```
+
+**Testing on Windows**
+```cmd
+REM Ensure UTF-8 encoding before running tests
+chcp 65001
+python test_secrets_manager.py
+
+REM Or use PowerShell (better Unicode support)
+powershell
+python test_secrets_manager.py
 ```
 
 ### Debugging

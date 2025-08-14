@@ -57,6 +57,27 @@ SWEEP_MARK = "\U0001F9F9"
 ROCKET_MARK = "\U0001F680"
 RECYCLE_MARK = "\U0001F504"
 
+# Global variable to track test mode
+_TEST_MODE = False
+
+def get_password_input(prompt: str) -> str:
+    """Get password input - from stdin in test mode, getpass otherwise."""
+    global _TEST_MODE
+    if _TEST_MODE:
+        print(prompt, end='', flush=True)
+        return input()
+    else:
+        return getpass.getpass(prompt)
+
+def get_confirmation_input(prompt: str, auto_confirm: bool = False) -> str:
+    """Get confirmation input - auto-confirm in test mode, input otherwise."""
+    global _TEST_MODE
+    if _TEST_MODE and auto_confirm:
+        print(prompt + "y")
+        return "y"
+    else:
+        return input(prompt)
+
 def auto_detect_project_config() -> Dict[str, str]:
     """Auto-detect project configuration from existing files."""
     config = {}
@@ -243,14 +264,14 @@ class SecretsManager:
             # Check if secrets folder already exists
             if os.path.exists(self.secrets_dir):
                 print(f"{TICK_MARK} Found existing {self.secrets_dir}/ folder")
-                response = input("Encrypt existing folder contents? (y/n): ").lower()
+                response = get_confirmation_input("Encrypt existing folder contents? (y/n): ", True).lower()
                 if response != 'y' and response != 'yes':
                     print(f"{CROSS_MARK} Cannot create - secrets folder exists but not encrypting")
                     break
 
                 # Get password for encryption
                 if not password:
-                    password = getpass.getpass("Enter password to encrypt secrets: ")
+                    password = get_password_input("Enter password to encrypt secrets: ")
                     if not password:
                         print(f"{CROSS_MARK} Password required to encrypt secrets")
                         break
@@ -277,7 +298,7 @@ class SecretsManager:
 
                 # Get password for future use
                 if not password:
-                    password = getpass.getpass("Enter password for this project: ")
+                    password = get_password_input("Enter password for this project: ")
                     if not password:
                         print(f"{CROSS_MARK} Password required for project setup")
                         shutil.rmtree(self.secrets_dir, ignore_errors=True)
@@ -334,7 +355,7 @@ class SecretsManager:
                 print(f"   {DOT_MARK} Secrets folder: {self.secrets_dir}/")
             print()
 
-            response = input("Type 'DELETE' to confirm destruction: ")
+            response = get_confirmation_input("Type 'DELETE' to confirm destruction: ")
             if response != 'DELETE':
                 print(f"{CROSS_MARK} Operation cancelled - nothing was deleted")
                 break
@@ -395,7 +416,7 @@ class SecretsManager:
         while do_once:
             do_once = False
 
-            # Check if encrypted file exists
+            # Stage 1: Check if project exists, mount if necessary
             if not os.path.isfile(self.secrets_file):
                 print(f"{CROSS_MARK} {self.secrets_file} not found!")
                 print(f"{LIGHTBULB_MARK} Create secrets first with:")
@@ -403,73 +424,94 @@ class SecretsManager:
                 break
 
             # Check if already mounted
-            if os.path.exists(self.secrets_dir):
-                print(f"{CROSS_MARK} Secrets are currently mounted!")
-                print(f"{LIGHTBULB_MARK} Unmount first with:")
-                print(f"   python secrets_manager.py unmount")
-                break
+            was_mounted = os.path.exists(self.secrets_dir)
+
+            if not was_mounted:
+                print(f"{INFO_MARK}  Secrets not mounted. Mounting first...")
+                # Try to mount with stored password
+                current_password = self._get_password()
+                if not current_password:
+                    print(f"{INFO_MARK}  No stored password found")
+                    current_password = get_password_input("Enter current password: ")
+                    if not current_password:
+                        print(f"{CROSS_MARK} Current password required")
+                        break
+
+                # Mount with current password
+                if not self._mount_with_password(current_password):
+                    print(f"{CROSS_MARK} Failed to mount with current password")
+                    break
+                print(f"{UNLOCK_MARK} Successfully mounted for password change")
+            else:
+                # Already mounted, we need current password for re-encryption
+                current_password = self._get_password()
+                if not current_password:
+                    print(f"{INFO_MARK}  No stored password found")
+                    current_password = get_password_input("Enter current password: ")
+                    if not current_password:
+                        print(f"{CROSS_MARK} Current password required")
+                        break
 
             print(f"{LOCK_MARK} Changing password for project '{self.project_name}'")
             print("This will re-encrypt all secrets with a new password.")
             print()
 
-            # Get current password and mount
-            current_password = self._get_password()
-            if not current_password:
-                print(f"{INFO_MARK}  No stored password found")
-                current_password = getpass.getpass("Enter current password: ")
-                if not current_password:
-                    print(f"{CROSS_MARK} Current password required")
-                    break
-
             try:
-                # Mount with current password
-                print(f"{UNLOCK_MARK} Mounting with current password...")
-                if not self._mount_with_password(current_password):
-                    print(f"{CROSS_MARK} Failed to mount with current password")
-                    break
-
-                # Get new password
+                # Stage 2: Get new password and update keychain/memory
                 if not new_password:
-                    new_password = getpass.getpass("Enter new password: ")
+                    new_password = get_password_input("Enter new password: ")
                     if not new_password:
                         print(f"{CROSS_MARK} New password cannot be empty")
-                        self._cleanup_mount_point()
+                        if not was_mounted:
+                            self._cleanup_mount_point()
                         break
 
-                    confirm_password = getpass.getpass("Confirm new password: ")
+                    confirm_password = get_password_input("Confirm new password: ")
                     if new_password != confirm_password:
                         print(f"{CROSS_MARK} Passwords do not match")
-                        self._cleanup_mount_point()
+                        if not was_mounted:
+                            self._cleanup_mount_point()
                         break
 
-                print(f"{RECYCLE_MARK} Re-encrypting with new password...")
+                print(f"{RECYCLE_MARK} Updating password in keychain...")
 
                 # Clear old password and store new one
                 self._clear_stored_password()
                 if not self._store_password(new_password):
                     print(f"{WARNING_MARK}  Warning: Could not store new password in keychain")
 
-                # Re-encrypt with new password (using unmount logic)
-                if self._unmount_with_password(new_password):
-                    print(f"{TICK_MARK} Password changed successfully!")
-                    print(f"{KEY_MARK} New password stored in keychain")
-                    print()
-                    print(f"{LIGHTBULB_MARK} Team members will need the new password:")
-                    print(f"   python secrets_manager.py clear")
-                    print(f"   python secrets_manager.py pass")
-                    ret_val = True
-                else:
+                # Stage 3: Unmount with new password (this re-encrypts)
+                print(f"{LOCK_MARK} Re-encrypting with new password...")
+                if not self._unmount_with_password(new_password):
                     print(f"{CROSS_MARK} Failed to re-encrypt with new password")
                     # Try to restore old password
                     self._store_password(current_password)
                     break
 
+                # Stage 4: Re-mount if it was originally mounted
+                if was_mounted:
+                    print(f"{UNLOCK_MARK} Re-mounting with new password...")
+                    if not self._mount_with_password(new_password):
+                        print(f"{WARNING_MARK}  Password changed but failed to re-mount")
+                        print(f"{LIGHTBULB_MARK} Use 'mount' command to mount manually")
+                    else:
+                        print(f"{TICK_MARK} Re-mounted successfully")
+
+                print(f"{TICK_MARK} Password changed successfully!")
+                print(f"{KEY_MARK} New password stored in keychain")
+                print()
+                print(f"{LIGHTBULB_MARK} Team members will need the new password:")
+                print(f"   python secrets_manager.py clear")
+                print(f"   python secrets_manager.py pass")
+                ret_val = True
+
             except Exception as e:
                 print(f"{CROSS_MARK} Failed to change password: {e}")
                 self.logger.error(f"Failed to change password: {e}")
-                # Try to cleanup
-                self._cleanup_mount_point()
+                # Try to restore state
+                self._store_password(current_password)
+                if not was_mounted:
+                    self._cleanup_mount_point()
                 break
 
         self.logger.info(f"EXIT: change_password, returning: {ret_val}")
@@ -517,7 +559,7 @@ class SecretsManager:
             do_once = False
 
             if not password:
-                password = getpass.getpass(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ")
                 if not password:
                     print(f"{CROSS_MARK} Password cannot be empty")
                     break
@@ -561,7 +603,7 @@ class SecretsManager:
             password = self._get_password()
             if not password:
                 print(f"{INFO_MARK}  No stored password found for project '{self.project_name}'")
-                password = getpass.getpass(f"Enter password for project '{self.project_name}': ")
+                password = get_password_input(f"Enter password for project '{self.project_name}': ")
                 if not password:
                     print(f"{CROSS_MARK} Password required to decrypt secrets")
                     break
@@ -634,7 +676,7 @@ class SecretsManager:
 
                 # Offer to store password if it wasn't stored before
                 if not self._has_stored_password():
-                    response = input(f"\n{DISK_MARK} Store password in keychain for future use? (y/n): ").lower()
+                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in keychain for future use? (y/n): ", True).lower()
                     if response == 'y' or response == 'yes':
                         if self._store_password(password):
                             print(f"{TICK_MARK} Password stored in keychain")
@@ -697,7 +739,7 @@ class SecretsManager:
 
                 if file_count == 0:
                     print(f"{WARNING_MARK}  No files found in secrets folder")
-                    response = input("Delete empty secrets folder? (y/n): ").lower()
+                    response = get_confirmation_input("Delete empty secrets folder? (y/n): ", True).lower()
                     if response == 'y' or response == 'yes':
                         shutil.rmtree(self.secrets_dir, ignore_errors=True)
                         print(f"{TICK_MARK} Deleted empty {self.secrets_dir}/ folder")
@@ -1379,9 +1421,14 @@ Examples:
     parser.add_argument("--secrets-dir", default="secrets",
                        help="Secrets directory name (only used with 'create' command, default: secrets)")
     parser.add_argument("--password", help="Password (only used with 'create' and 'pass' commands)")
+    parser.add_argument("--test-mode", action="store_true", help="Test mode: read passwords from stdin and auto-confirm prompts")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()
+
+    # Setup test mode
+    global _TEST_MODE
+    _TEST_MODE = args.test_mode
 
     # Setup logging level
     if args.verbose:

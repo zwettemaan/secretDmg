@@ -60,7 +60,7 @@ is_python_compatible() {
 # Function to find the best Python executable
 find_python() {
     local python_candidates=("python3" "python" "python3.12" "python3.11" "python3.10" "python3.9" "python3.8" "python3.7" "python3.6")
-    
+
     for cmd in "${python_candidates[@]}"; do
         if command_exists "$cmd"; then
             local version=$(get_python_version "$cmd")
@@ -72,7 +72,7 @@ find_python() {
             fi
         fi
     done
-    
+
     return 1
 }
 
@@ -83,7 +83,7 @@ provide_installation_guidance() {
     echo
     echo "The secrets manager requires Python 3.6 or later. Here's how to install it:"
     echo
-    
+
     # Detect OS and provide specific guidance
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
@@ -96,7 +96,7 @@ provide_installation_guidance() {
         echo
         echo "  3. Xcode Command Line Tools:"
         echo "     xcode-select --install"
-        
+
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         # Linux
         echo "🐧 Linux Installation Options:"
@@ -115,7 +115,7 @@ provide_installation_guidance() {
         else
             echo "  Use your distribution's package manager to install python3"
         fi
-        
+
     elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
         # Windows (Git Bash/Cygwin)
         echo "🪟 Windows Installation Options:"
@@ -128,12 +128,12 @@ provide_installation_guidance() {
         echo
         echo "  3. Chocolatey:"
         echo "     choco install python3"
-        
+
     else
         echo "🌐 General Installation:"
         echo "  Download Python from https://www.python.org/downloads/"
     fi
-    
+
     echo
     echo "After installation, restart your terminal and try running this script again."
     echo
@@ -144,26 +144,26 @@ main() {
     # Get the directory where this script is located
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     SECRETS_MANAGER_PY="$SCRIPT_DIR/secrets_manager.py"
-    
+
     # Check if secrets_manager.py exists
     if [[ ! -f "$SECRETS_MANAGER_PY" ]]; then
         print_error "secrets_manager.py not found in $SCRIPT_DIR"
         echo "Please ensure secrets_manager.py is in the same directory as this script."
         exit 1
     fi
-    
+
     # Find compatible Python
     PYTHON_CMD=$(find_python)
-    
+
     if [[ -z "$PYTHON_CMD" ]]; then
         provide_installation_guidance
         exit 1
     fi
-    
+
     # Show success message with version info
     PYTHON_VERSION=$(get_python_version "$PYTHON_CMD")
     print_success "Using $PYTHON_CMD (version $PYTHON_VERSION)"
-    
+
     # Execute secrets_manager.py with all arguments
     exec "$PYTHON_CMD" "$SECRETS_MANAGER_PY" "$@"
 }

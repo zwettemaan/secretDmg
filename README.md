@@ -53,6 +53,68 @@ This software is provided "as is", without warranty of any kind, express or impl
 
 ## ⚡ Quick Start
 
+**Using Wrapper Scripts (Recommended - Auto-detects Python):**
+
+*macOS/Linux:*
+```bash
+# 1. Create a new secrets project
+./secrets_manager.sh create
+
+# 2. Add your secret files to the secrets/ folder
+echo "API_KEY=super_secret_key" > secrets/.env
+echo "DATABASE_URL=postgres://..." > secrets/database.conf
+
+# 3. Encrypt and clean up
+./secrets_manager.sh unmount
+
+# 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+# 5. Later, decrypt when you need to work
+./secrets_manager.sh mount
+# Edit files in secrets/
+./secrets_manager.sh unmount
+
+# 6. Security operations as needed
+./secrets_manager.sh change-password  # Rotate password
+./secrets_manager.sh destroy          # Remove everything
+
+# 7. Verify everything works (optional)
+./test_secrets_manager.sh             # Run comprehensive tests
+```
+
+*Windows:*
+```cmd
+REM 1. Create a new secrets project
+secrets_manager.bat create
+
+REM 2. Add your secret files to the secrets\ folder
+echo API_KEY=super_secret_key > secrets\.env
+echo DATABASE_URL=postgres://... > secrets\database.conf
+
+REM 3. Encrypt and clean up
+secrets_manager.bat unmount
+
+REM 4. Commit the encrypted file (safe!)
+git add .myproject.secrets
+git commit -m "Add encrypted secrets"
+
+REM 5. Later, decrypt when you need to work
+secrets_manager.bat mount
+REM Edit files in secrets\
+secrets_manager.bat unmount
+
+REM 6. Security operations as needed
+secrets_manager.bat change-password
+secrets_manager.bat destroy
+
+REM 7. Verify everything works (optional)
+test_secrets_manager.bat
+```
+
+**Manual Python Execution (if you prefer direct control):**
+
 **macOS/Linux:**
 ```bash
 # 1. Create a new secrets project
@@ -156,10 +218,37 @@ python test_secrets_manager.py
 
 ### Optional: Add to PATH
 ```bash
-# Make it available globally
+# Make it available globally (Unix/Linux/macOS)
 sudo cp secrets_manager.py /usr/local/bin/secrets_manager
 sudo chmod +x /usr/local/bin/secrets_manager
+
+# Or use the wrapper script (recommended)
+sudo cp secrets_manager.sh /usr/local/bin/secrets_manager
+sudo chmod +x /usr/local/bin/secrets_manager
 ```
+
+### Easy-to-Use Wrapper Scripts (Recommended)
+
+The project includes wrapper scripts that automatically detect your Python installation:
+
+**Unix/Linux/macOS:**
+```bash
+./secrets_manager.sh create          # Auto-detects python3/python
+./test_secrets_manager.sh            # Runs comprehensive tests
+```
+
+**Windows:**
+```cmd
+secrets_manager.bat create           # Auto-detects python/python3/py
+test_secrets_manager.bat             # Runs comprehensive tests
+```
+
+**Benefits of wrapper scripts:**
+- ✅ **Auto-detects** Python executable (python3, python, py, etc.)
+- ✅ **Version checking** ensures Python 3.6+ compatibility
+- ✅ **Helpful error messages** with installation guidance
+- ✅ **Cross-platform** consistency
+- ✅ **No Python knowledge** required for users
 
 ## 🎯 Usage
 
@@ -198,7 +287,11 @@ myproject/
 │   ├── database.conf
 │   └── secrets_manager.hash     # Change detection
 ├── secrets_manager.py           # The tool itself
-└── test_secrets_manager.py      # Comprehensive test suite (optional)
+├── secrets_manager.sh           # Unix/Linux/macOS wrapper script
+├── secrets_manager.bat          # Windows wrapper script
+├── test_secrets_manager.py      # Comprehensive test suite (optional)
+├── test_secrets_manager.sh      # Unix/Linux/macOS test runner
+└── test_secrets_manager.bat     # Windows test runner
 ```
 
 **Configuration Persistence**: When you run `create` with `--project` or `--secrets-dir`, these settings are automatically saved in `.secrets_keychain_entry` and used by all subsequent commands (`mount`, `unmount`, etc.).
@@ -666,13 +759,20 @@ REM Solution 3: Use Windows Terminal (recommended)
 REM Download from Microsoft Store - has better Unicode support
 ```
 
-**"'python3' is not recognized as an internal or external command"**
-```cmd
-REM Windows uses 'python' not 'python3'
-python secrets_manager.py create
-python test_secrets_manager.py
+### Windows-Specific Issues
 
-REM If you need python3 command, create a copy:
+**"python is not recognized as an internal or external command"**
+```cmd
+REM Solution 1: Use the wrapper script (recommended)
+REM The wrapper script auto-detects your Python installation
+secrets_manager.bat create
+test_secrets_manager.bat
+
+REM Solution 2: Try alternative Python commands
+py secrets_manager.py create
+python3 secrets_manager.py create
+
+REM Solution 3: If you need python3 command, create a copy
 copy "C:\Python311\python.exe" "C:\Python311\python3.exe"
 REM (adjust path to your Python installation)
 ```

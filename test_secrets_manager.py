@@ -104,7 +104,7 @@ class SecretsManagerStory:
         """Execute a command showing only what the user would type."""
         # Platform-aware Python executable and input commands
         python_cmd = "python" if is_windows() else "python3"
-        
+
         # Build the actual command with technical details hidden
         if input_data is None:
             full_command = f"{python_cmd} {command_str} --test-mode"
@@ -112,8 +112,9 @@ class SecretsManagerStory:
             # Multiple inputs (like for change-password)
             input_string = '\\n'.join(input_data)
             if is_windows():
-                # Windows command - more complex due to cmd limitations
-                full_command = f"echo {input_string.replace('\\n', '&echo ')} | {python_cmd} {command_str} --test-mode"
+                # Windows command - process string replacement outside f-string
+                windows_input = input_string.replace('\\n', '&echo ')
+                full_command = f"echo {windows_input} | {python_cmd} {command_str} --test-mode"
             else:
                 full_command = f"printf '{input_string}\\n' | {python_cmd} {command_str} --test-mode"
         else:
@@ -253,7 +254,7 @@ class SecretsManagerStory:
                 all_steps_passed = False
 
             # Chapter 4: Modifying secrets
-            self.modify_secrets()
+            self.modify_sample_secrets()
 
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False

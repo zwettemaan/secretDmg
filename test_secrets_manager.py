@@ -83,10 +83,34 @@ class SecretsManagerStory:
             shutil.rmtree(self.test_dir)
             print(f"🧹 Cleaned up: {self.test_dir}")
 
+        # Clean up temporary files on Windows
+        if hasattr(self, '_temp_files_to_cleanup'):
+            for temp_file in self._temp_files_to_cleanup:
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except:
+                    pass  # Ignore cleanup errors
+
     def run(self, command_description, command, should_succeed=True):
         """Execute a command with readable description."""
         print(f"  {CMD_MARK} {command_description}")
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+        # Add debugging for Windows
+        if is_windows():
+            print(f"  [DEBUG] Full command: {command}")
+
+        try:
+            # Add timeout to prevent hanging and handle stdin properly
+            if is_windows() and '|' not in command and '<' not in command:
+                # For simple commands on Windows, explicitly set stdin to DEVNULL
+                result = subprocess.run(command, shell=True, capture_output=True, text=True,
+                                      timeout=30, stdin=subprocess.DEVNULL)
+            else:
+                result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            print(f"  {ERROR_MARK} Command timed out after 30 seconds")
+            return False
 
         if should_succeed and result.returncode != 0:
             print(f"  {ERROR_MARK} Expected success but failed: {result.stderr}")
@@ -112,14 +136,24 @@ class SecretsManagerStory:
             # Multiple inputs (like for change-password)
             input_string = '\\n'.join(input_data)
             if is_windows():
-                # Windows command - process string replacement outside f-string
-                windows_input = input_string.replace('\\n', '&echo ')
-                full_command = f"echo {windows_input} | {python_cmd} {command_str} --test-mode"
+                # Windows: Use temporary file approach to avoid piping issues
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+                    f.write(input_string.replace('\\n', '\n'))
+                    temp_file = f.name
+                full_command = f"{python_cmd} {command_str} --test-mode < {temp_file}"
+                # Clean up temp file after execution
+                self._temp_files_to_cleanup = getattr(self, '_temp_files_to_cleanup', [])
+                self._temp_files_to_cleanup.append(temp_file)
             else:
                 full_command = f"printf '{input_string}\\n' | {python_cmd} {command_str} --test-mode"
         else:
             # Single input
-            full_command = f"echo '{input_data}' | {python_cmd} {command_str} --test-mode"
+            if is_windows():
+                # Windows: Use echo with proper escaping
+                full_command = f"echo {input_data} | {python_cmd} {command_str} --test-mode"
+            else:
+                full_command = f"echo '{input_data}' | {python_cmd} {command_str} --test-mode"
 
         return self.run(command_str, full_command, should_succeed)
 

@@ -29,14 +29,16 @@ The tool allows you to embed the secrets within your project as an encrypted fil
 
 The default API is very simple. 
 
-When you need access to the secrets, for example in a build script, you 'mount' the secrets. Once you are done, you 'unmount' them.
+When you need access to the secrets, for example in a build script, you 'mount' the secrets. Once you are done, you 'unmount' them again.
 
 ```
   ... secrets are not accessible
 
 secrets_manager.sh mount
+
   ...
   ... build script now accesses secrets/SUPERSECRETPASSWORD
+  ... if desired, build script can persist some data in the secrets folder
   ...
 
 secrets_manager.sh unmount
@@ -44,7 +46,7 @@ secrets_manager.sh unmount
   ... secrets are not accessible any more
 ```
 
-No need to remember passwords - these are all stored in the computers secure credential store.
+No need to remember the password for the secret storage. The password is stored in the local computers' secure credential store and never gets sent to the repository.
 
 And that's the gist of it!
 

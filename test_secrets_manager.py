@@ -717,18 +717,18 @@ class SecretsManagerStory:
             print(f"{SUMMARY_MARK} STORY RESULTS")
             print("="*60)
 
-            print(f"✅ SUCCESSFUL STORIES ({len(self.passed_scenarios)}):")
+            print(f"{OK_MARK} SUCCESSFUL STORIES ({len(self.passed_scenarios)}):")
             for scenario in self.passed_scenarios:
-                print(f"   📖 {scenario}")
+                print(f"   {DOC_MARK} {scenario}")
 
             if self.failed_scenarios:
-                print(f"\n❌ FAILED STORIES ({len(self.failed_scenarios)}):")
-                for scenario in self.failed_scenarios:
-                    print(f"   📖 {scenario}")
+                print(f"\n{ERROR_MARK} FAILED STORIES ({len(self.failed_scenarios)}):")
+                for scenario, details in self.failed_scenarios:
+                    print(f"   {DOC_MARK} {scenario}: {details}")
                 print(f"\n{BOOM_MARK} {len(self.failed_scenarios)} story/stories had issues!")
                 return False
             else:
-                print(f"\n🎉 All {len(self.passed_scenarios)} stories completed successfully!")
+                print(f"\n{OK_MARK} All {len(self.passed_scenarios)} stories completed successfully!")
                 return True
 
         finally:

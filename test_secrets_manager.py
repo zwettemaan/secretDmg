@@ -3,18 +3,7 @@
 Human-readable test suite for secrets_manager.py
 
 This test suite is designed to read like a story, making it easy to understand
-what functionality is being            # Chapter 1: Creating a new secret vault
-            if not self.cmd("secrets_manager.py create", "test123"):
-                all_steps_passed = False
-
-            if not self.check_that("secrets folder is created", self.folder_exists("secrets")):
-                all_steps_passed = False
-
-            self.create_sample_secrets()
-
-            # Chapter 2: Securing the secrets
-            if not self.cmd("secrets_manager.py unmount"):
-                all_steps_passed = Falseout getting lost in implementation details.
+what functionality is being tested without getting lost in implementation details.
 
 The test commands mirror exactly what users would type on the command line,
 hiding technical details like python3, --test-mode, and input piping.
@@ -363,7 +352,6 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py status"):
                 all_steps_passed = False
 
-            # Clean up
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
 
@@ -409,7 +397,6 @@ class SecretsManagerStory:
             if not self.cmd("secrets_manager.py create", "test123", should_succeed=False):
                 all_steps_passed = False
 
-            # Clean up
             project_name = os.path.basename(os.getcwd())
             if not self.cmd("secrets_manager.py destroy", "DELETE"):
                 all_steps_passed = False
@@ -433,11 +420,9 @@ class SecretsManagerStory:
         project_name = os.path.basename(os.getcwd())
 
         try:
-            # Test status with no project
             if not self.cmd("secrets_manager.py status"):
                 all_steps_passed = False
 
-            # Test create command
             if not self.cmd("secrets_manager.py create", "test123"):
                 all_steps_passed = False
 
@@ -446,33 +431,27 @@ class SecretsManagerStory:
 
             self.create_sample_secrets()
 
-            # Test unmount command
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py status"):
                 all_steps_passed = False
 
-            # Test mount command
             if not self.cmd("secrets_manager.py mount"):
                 all_steps_passed = False
 
-            # Test clear command
             if not self.cmd("secrets_manager.py clear"):
                 all_steps_passed = False
 
-            # Test pass command
             if not self.cmd("secrets_manager.py pass", "test123"):
                 all_steps_passed = False
 
             if not self.cmd("secrets_manager.py unmount"):
                 all_steps_passed = False
 
-            # Test change-password command
             if not self.cmd("secrets_manager.py change-password", ["newpass456", "newpass456"]):
                 all_steps_passed = False
 
-            # Test destroy command
             if not self.cmd("secrets_manager.py destroy", "DELETE"):
                 all_steps_passed = False
 
@@ -500,7 +479,6 @@ class SecretsManagerStory:
         all_steps_passed = True
 
         try:
-            # Test with default folder
             print("  🏠 Testing default folder behavior...")
             project_name = os.path.basename(os.getcwd())
 
@@ -536,7 +514,6 @@ class SecretsManagerStory:
             if not self.check_that("default files are gone", self.no_secrets_files_remain(project_name)):
                 all_steps_passed = False
 
-            # Test with custom folder
             print("  🏗️ Testing custom folder behavior...")
             custom_project = "test_custom"
             custom_folder = "my_special_secrets"

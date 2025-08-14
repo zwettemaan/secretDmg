@@ -1121,9 +1121,18 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                subprocess.run([
-                    "cmdkey", "/delete:" + service_name
-                ], check=True, capture_output=True)
+                # Delete existing credential (ignore errors if not found)
+                try:
+                    result = subprocess.run([
+                        "cmdkey", "/delete:" + service_name
+                    ], capture_output=True, text=True, timeout=10)
+                    self.logger.info(f"Credential deletion result: {result.returncode}")
+                    if result.stderr:
+                        self.logger.info(f"Deletion stderr: {result.stderr}")
+                except Exception as e:
+                    self.logger.warning(f"Could not delete existing credential: {e}")
+
+                return True  # Consider cleared if delete command runs
 
             else:  # Linux and others
                 cred_file = os.path.expanduser(f"~/.{service_name}")
@@ -1294,20 +1303,40 @@ class SecretsManager:
                 ], check=True, capture_output=True)
 
             elif self.platform == "windows":
-                # First try to delete any existing entry
+                # Delete any existing credential first (ignore errors)
                 try:
-                    subprocess.run([
+                    result = subprocess.run([
                         "cmdkey", "/delete:" + service_name
-                    ], capture_output=True)
-                except:
-                    pass  # Ignore if it doesn't exist
+                    ], capture_output=True, text=True, timeout=10)
+                    if result.stderr:
+                        self.logger.info(f"Delete stderr: {result.stderr}")
+                except Exception as e:
+                    self.logger.warning(f"Could not delete existing credential: {e}")
 
-                # Now add the new entry
-                subprocess.run([
-                    "cmdkey", "/generic:" + service_name,
-                    "/user:" + getpass.getuser(),
-                    "/pass:" + password.strip()
-                ], check=True, capture_output=True)
+                # Add new credential
+                try:
+                    cmd = [
+                        "cmdkey",
+                        "/generic:" + service_name,
+                        "/user:" + getpass.getuser(),
+                        "/pass:" + password.strip()
+                    ]
+                    self.logger.info(f"Running cmdkey command: {cmd[0]} {cmd[1]} {cmd[2]} /pass:***")
+
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+                    if result.returncode == 0:
+                        self.logger.info("Successfully stored credential in Windows Credential Manager")
+                        return True
+                    else:
+                        self.logger.error(f"cmdkey failed with return code {result.returncode}")
+                        self.logger.error(f"stdout: {result.stdout}")
+                        self.logger.error(f"stderr: {result.stderr}")
+                        return False
+
+                except Exception as e:
+                    self.logger.error(f"Exception running cmdkey: {e}")
+                    return False
 
             else:  # Linux and others
                 # Store in encrypted file as fallback
@@ -1341,22 +1370,27 @@ class SecretsManager:
                 return result.stdout.strip()
 
             elif self.platform == "windows":
-                # Windows credential retrieval requires parsing output
-                result = subprocess.run([
-                    "cmdkey", "/list:" + service_name
-                ], capture_output=True, text=True)
+                # Windows credential retrieval using cmdkey
+                try:
+                    result = subprocess.run([
+                        "cmdkey", "/list:" + service_name
+                    ], capture_output=True, text=True, timeout=10)
 
-                if service_name in result.stdout:
-                    # Password is stored, but Windows doesn't easily return it
-                    # In test mode, use the test password
-                    global _TEST_MODE
-                    if _TEST_MODE:
-                        # Return the standard test password
-                        return TEST_PASSWORD
+                    if result.returncode == 0 and service_name in result.stdout:
+                        # Credential exists, but Windows doesn't return the actual password
+                        # In test mode, we know what password was used
+                        global _TEST_MODE
+                        if _TEST_MODE:
+                            return TEST_PASSWORD
+                        else:
+                            # For interactive mode, ask for password
+                            return get_password_input("Enter secrets password: ")
                     else:
-                        # For interactive mode, ask for password
-                        return get_password_input("Enter secrets password: ")
-                else:
+                        self.logger.info(f"No credential found for {service_name}")
+                        return None
+
+                except Exception as e:
+                    self.logger.warning(f"Error checking Windows credentials: {e}")
                     return None
 
             else:  # Linux and others
@@ -1396,10 +1430,14 @@ class SecretsManager:
                 return True
 
             elif self.platform == "windows":
-                result = subprocess.run([
-                    "cmdkey", "/list:" + service_name
-                ], capture_output=True, text=True)
-                return service_name in result.stdout
+                try:
+                    result = subprocess.run([
+                        "cmdkey", "/list:" + service_name
+                    ], capture_output=True, text=True, timeout=10)
+                    return result.returncode == 0 and service_name in result.stdout
+                except Exception as e:
+                    self.logger.warning(f"Error checking stored credentials: {e}")
+                    return False
 
             else:  # Linux
                 cred_file = os.path.expanduser(f"~/.{service_name}")

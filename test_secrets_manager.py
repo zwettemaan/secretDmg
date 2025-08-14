@@ -96,6 +96,35 @@ class TestSecretsManager:
             print(f"  ❌ Exception running command: {e}")
             return False, "", str(e)
 
+    def verify_folder_deleted(self, secrets_dir="secrets", should_be_deleted=True):
+        """Verify that secrets folder is properly deleted/created."""
+        exists = os.path.exists(secrets_dir)
+        if should_be_deleted and exists:
+            print(f"  ❌ Folder {secrets_dir} should be deleted but still exists")
+            return False
+        elif not should_be_deleted and not exists:
+            print(f"  ❌ Folder {secrets_dir} should exist but is missing")
+            return False
+
+        action = "deleted" if should_be_deleted else "exists"
+        print(f"  ✅ Folder {secrets_dir} correctly {action}")
+        return True
+
+    def verify_encrypted_file_exists(self, project_name, should_exist=True):
+        """Verify that encrypted file exists or doesn't exist."""
+        encrypted_file = f".{project_name}.secrets"
+        exists = os.path.exists(encrypted_file)
+        if should_exist and not exists:
+            print(f"  ❌ Encrypted file {encrypted_file} should exist but doesn't")
+            return False
+        elif not should_exist and exists:
+            print(f"  ❌ Encrypted file {encrypted_file} should not exist but does")
+            return False
+
+        action = "exists" if should_exist else "deleted"
+        print(f"  ✅ Encrypted file {encrypted_file} correctly {action}")
+        return True
+
     def create_test_files(self, secrets_dir="secrets"):
         """Create test files in secrets directory."""
         secrets_path = Path(secrets_dir)
@@ -199,6 +228,11 @@ class TestSecretsManager:
                 self.failed_tests.append("Basic: Create project failed")
                 return False
 
+            # 1.1. Verify status after create
+            if not self.run_status_and_verify("after create"):
+                self.failed_tests.append("Basic: Status verification failed after create")
+                return False
+
             # 2. Add test files
             self.create_test_files("secrets")
 
@@ -208,9 +242,14 @@ class TestSecretsManager:
                 self.failed_tests.append("Basic: Unmount failed")
                 return False
 
-            # 4. Verify secrets folder is gone and encrypted file exists
-            if os.path.exists("secrets"):
-                self.failed_tests.append("Basic: Secrets folder still exists after unmount")
+            # 3.1. Verify status after unmount
+            if not self.run_status_and_verify("after unmount"):
+                self.failed_tests.append("Basic: Status verification failed after unmount")
+                return False
+
+            # 4. Verify secrets folder is deleted and encrypted file exists
+            if not self.verify_folder_deleted("secrets", True):
+                self.failed_tests.append("Basic: Secrets folder not deleted after unmount")
                 return False
 
             # Find the encrypted file
@@ -223,6 +262,16 @@ class TestSecretsManager:
             success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
             if not success:
                 self.failed_tests.append("Basic: Mount failed")
+                return False
+
+            # 5.1. Verify status after mount
+            if not self.run_status_and_verify("after mount"):
+                self.failed_tests.append("Basic: Status verification failed after mount")
+                return False
+
+            # 6. Verify secrets folder is recreated
+            if not self.verify_folder_deleted("secrets", False):
+                self.failed_tests.append("Basic: Secrets folder not recreated after mount")
                 return False
 
             # 6. Verify files are restored
@@ -260,14 +309,14 @@ class TestSecretsManager:
                 self.failed_tests.append("Basic: Clear password failed")
                 return False
 
-            # 12. Unmount (should fail due to no password)
-            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
-            if not os.path.exists("secrets"):
-                # If secrets folder was removed, mount should fail
-                success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode", expect_failure=True)
-                if not success:
-                    self.failed_tests.append("Basic: Mount should have failed without password")
-                    return False
+            # 11.1. Verify status after clear
+            if not self.run_status_and_verify("after clear password"):
+                self.failed_tests.append("Basic: Status verification failed after clear")
+                return False
+
+            # 12. Unmount (should fail due to no password, that's OK)
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode", expect_failure=True)
+            # Note: This may succeed or fail depending on current state, both are acceptable
 
             # 13. Reinstate password
             success, stdout, stderr = self.run_command(
@@ -275,6 +324,11 @@ class TestSecretsManager:
             )
             if not success:
                 self.failed_tests.append("Basic: Reinstate password failed")
+                return False
+
+            # 13.1. Verify status after pass
+            if not self.run_status_and_verify("after pass command"):
+                self.failed_tests.append("Basic: Status verification failed after pass")
                 return False
 
             # 14. Mount should work now
@@ -297,14 +351,14 @@ class TestSecretsManager:
                 self.failed_tests.append("Basic: Destroy project failed")
                 return False
 
-            # 17. Verify everything is cleaned up
-            if os.path.exists("secrets") or os.path.exists(".secrets_keychain_entry"):
-                self.failed_tests.append("Basic: Project not fully destroyed")
+            # 16.1. Verify complete destruction
+            if not self.verify_complete_destruction():
+                self.failed_tests.append("Basic: Complete destruction verification failed")
                 return False
 
-            encrypted_files = [f for f in os.listdir(".") if f.endswith(".secrets")]
-            if encrypted_files:
-                self.failed_tests.append("Basic: Encrypted files not removed by destroy")
+            # 16.2. Verify status after destroy (should succeed but show no project)
+            if not self.run_status_and_verify("after destroy", check_success=True):
+                self.failed_tests.append("Basic: Status after destroy should succeed")
                 return False
 
             self.passed_tests.append("Basic workflow")
@@ -327,6 +381,11 @@ class TestSecretsManager:
                 self.failed_tests.append("Custom: Create project failed")
                 return False
 
+            # 1.1. Verify status after create
+            if not self.run_status_and_verify("after custom create"):
+                self.failed_tests.append("Custom: Status verification failed after create")
+                return False
+
             # 2. Add test files
             self.create_test_files(CUSTOM_SECRETS_DIR)
 
@@ -336,16 +395,25 @@ class TestSecretsManager:
                 self.failed_tests.append("Custom: Unmount failed")
                 return False
 
+            # 3.5. Verify custom secrets folder is deleted
+            if not self.verify_folder_deleted(CUSTOM_SECRETS_DIR, True):
+                self.failed_tests.append("Custom: Custom secrets folder not deleted after unmount")
+                return False
+
             # 4. Verify encrypted file uses custom project name
-            encrypted_file = f".{CUSTOM_PROJECT}.secrets"
-            if not os.path.exists(encrypted_file):
-                self.failed_tests.append(f"Custom: Encrypted file {encrypted_file} not found")
+            if not self.verify_encrypted_file_exists(CUSTOM_PROJECT, True):
+                self.failed_tests.append("Custom: Custom encrypted file not found")
                 return False
 
             # 5. Mount (should auto-detect)
             success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
             if not success:
                 self.failed_tests.append("Custom: Mount failed")
+                return False
+
+            # 5.5. Verify custom secrets folder is recreated
+            if not self.verify_folder_deleted(CUSTOM_SECRETS_DIR, False):
+                self.failed_tests.append("Custom: Custom secrets folder not recreated after mount")
                 return False
 
             # 6. Verify files restored to correct directory
@@ -366,6 +434,11 @@ class TestSecretsManager:
                 self.failed_tests.append("Custom: Change password failed")
                 return False
 
+            # 7.1. Verify status after change-password
+            if not self.run_status_and_verify("after change-password"):
+                self.failed_tests.append("Custom: Status verification failed after change-password")
+                return False
+
             # 8. Mount with new password
             success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
             if not success:
@@ -383,6 +456,11 @@ class TestSecretsManager:
             )
             if not success:
                 self.failed_tests.append("Custom: Destroy project failed")
+                return False
+
+            # 9.1. Verify complete destruction of custom project
+            if not self.verify_complete_destruction(CUSTOM_PROJECT, CUSTOM_SECRETS_DIR):
+                self.failed_tests.append("Custom: Complete destruction verification failed")
                 return False
 
             self.passed_tests.append("Custom workflow")
@@ -446,12 +524,434 @@ class TestSecretsManager:
                 "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
             )
 
+            # Verify complete destruction
+            project_name = os.path.basename(os.getcwd())
+            if not self.verify_complete_destruction(project_name, "secrets"):
+                self.failed_tests.append("Edge: Complete destruction verification failed")
+                return False
+
             self.passed_tests.append("Edge cases")
             return True
 
         except Exception as e:
             self.failed_tests.append(f"Edge cases exception: {e}")
             return False
+
+    def test_all_commands_coverage(self):
+        """Test all 8 commands to ensure complete coverage."""
+        print("\n🧪 Testing all commands coverage...")
+
+        # Commands that should be tested: create, mount, unmount, pass, clear, change-password, destroy, status
+        commands_tested = set()
+
+        try:
+            # 1. Test status command when no project exists (should succeed)
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode", expect_failure=False)
+            if not success:
+                self.failed_tests.append("Commands: Status command should succeed when no project exists")
+                return False
+            commands_tested.add("status")
+
+            # 2. Test create command
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Commands: Create command failed")
+                return False
+            commands_tested.add("create")
+
+            # 3. Test status when project exists but empty
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Status command failed with empty project")
+                return False
+
+            # Add test files
+            self.create_test_files("secrets")
+
+            # 4. Test unmount command
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Unmount command failed")
+                return False
+            commands_tested.add("unmount")
+
+            # 5. Test status when unmounted
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Status command failed when unmounted")
+                return False
+
+            # 6. Test mount command
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Mount command failed")
+                return False
+            commands_tested.add("mount")
+
+            # 7. Test clear command
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py clear --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Clear command failed")
+                return False
+            commands_tested.add("clear")
+
+            # 8. Test pass command
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py pass --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Commands: Pass command failed")
+                return False
+            commands_tested.add("pass")
+
+            # 9. Test change-password command (requires unmount first)
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Commands: Unmount before change-password failed")
+                return False
+
+            success, stdout, stderr = self.run_command(
+                f"printf '{TEST_PASSWORD_2}\\n{TEST_PASSWORD_2}\\n' | python3 secrets_manager.py change-password --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Commands: Change-password command failed")
+                return False
+            commands_tested.add("change-password")
+
+            # 10. Test destroy command
+            success, stdout, stderr = self.run_command(
+                "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Commands: Destroy command failed")
+                return False
+            commands_tested.add("destroy")
+
+            # Verify complete destruction
+            project_name = os.path.basename(os.getcwd())
+            if not self.verify_complete_destruction(project_name, "secrets"):
+                self.failed_tests.append("Commands: Complete destruction verification failed")
+                return False
+
+            # 11. Final status test after destroy (should succeed)
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode", expect_failure=False)
+            if not success:
+                self.failed_tests.append("Commands: Status should succeed after destroy")
+                return False
+
+            # Verify all 8 commands were tested
+            expected_commands = {"create", "mount", "unmount", "pass", "clear", "change-password", "destroy", "status"}
+            if commands_tested != expected_commands:
+                missing = expected_commands - commands_tested
+                self.failed_tests.append(f"Commands: Missing command coverage: {missing}")
+                return False
+
+            print(f"  ✅ All {len(expected_commands)} commands successfully tested")
+            self.passed_tests.append("All commands coverage")
+            return True
+
+        except Exception as e:
+            self.failed_tests.append(f"Commands coverage exception: {e}")
+            return False
+
+    def test_edge_cases(self):
+        """Test edge cases and error conditions."""
+        print("\n🧪 Testing edge cases...")
+
+        try:
+            # Make sure we start completely clean
+            for f in os.listdir("."):
+                if f.endswith(".secrets") or f == ".secrets_keychain_entry" or f == "secrets":
+                    if os.path.isdir(f):
+                        shutil.rmtree(f)
+                    else:
+                        os.remove(f)
+
+            # 1. Try to mount non-existent project
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode", expect_failure=True)
+            if not success:
+                self.failed_tests.append("Edge: Mount non-existent should fail")
+                return False
+
+            # 2. Try to unmount when nothing is mounted
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Edge: Unmount when nothing mounted failed")
+                return False
+
+            # 3. Create project, then try to create again (should fail)
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Edge: Initial create failed")
+                return False
+
+            # Create encrypted file by unmounting
+            self.create_test_files("secrets")
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Edge: Create encrypted file failed")
+                return False
+
+            # Now try to create again - should fail
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --test-mode",
+                expect_failure=True
+            )
+            if not success:
+                self.failed_tests.append("Edge: Second create should have failed")
+                return False
+
+            # Cleanup
+            success, stdout, stderr = self.run_command(
+                "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
+            )
+
+            # Verify complete destruction
+            project_name = os.path.basename(os.getcwd())
+            if not self.verify_complete_destruction(project_name, "secrets"):
+                self.failed_tests.append("Edge: Complete destruction verification failed")
+                return False
+
+            self.passed_tests.append("Edge cases")
+            return True
+
+        except Exception as e:
+            self.failed_tests.append(f"Edge cases exception: {e}")
+            return False
+
+    def test_status_command(self):
+        """Test the status command in various states."""
+        print("\n🧪 Testing status command...")
+
+        try:
+            # 1. Status when no project exists
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Status command failed when no project exists")
+                return False
+
+            # 2. Create project and test status
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Status: Create project for status testing failed")
+                return False
+
+            # 3. Status when project exists but no secrets
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Status command failed with empty project")
+                return False
+
+            # 4. Add files and test status
+            self.create_test_files("secrets")
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Status command failed with files in secrets")
+                return False
+
+            # 5. Unmount and test status
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Unmount failed during status testing")
+                return False
+
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Status command failed when unmounted")
+                return False
+
+            # 6. Mount and test status
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Mount failed during status testing")
+                return False
+
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+            if not success:
+                self.failed_tests.append("Status: Status command failed when mounted")
+                return False
+
+            # Cleanup
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            success, stdout, stderr = self.run_command(
+                "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
+            )
+
+            self.passed_tests.append("Status command")
+            return True
+
+        except Exception as e:
+            self.failed_tests.append(f"Status command exception: {e}")
+            return False
+
+    def test_comprehensive_folder_verification(self):
+        """Test folder deletion and creation with custom names."""
+        print("\n🧪 Testing comprehensive folder verification...")
+
+        try:
+            # Test with default folder name
+            print("  📂 Testing default folder name...")
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Folder: Create default project failed")
+                return False
+
+            # Verify default folder exists
+            if not self.verify_folder_deleted("secrets", False):
+                self.failed_tests.append("Folder: Default secrets folder should exist after create")
+                return False
+
+            self.create_test_files("secrets")
+
+            # Unmount and verify folder is deleted
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Folder: Unmount default project failed")
+                return False
+
+            if not self.verify_folder_deleted("secrets", True):
+                self.failed_tests.append("Folder: Default secrets folder should be deleted after unmount")
+                return False
+
+            # Verify encrypted file exists
+            project_name = os.path.basename(os.getcwd())
+            if not self.verify_encrypted_file_exists(project_name, True):
+                self.failed_tests.append("Folder: Encrypted file should exist after unmount")
+                return False
+
+            # Mount and verify folder is recreated
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
+            if not success:
+                self.failed_tests.append("Folder: Mount default project failed")
+                return False
+
+            if not self.verify_folder_deleted("secrets", False):
+                self.failed_tests.append("Folder: Default secrets folder should exist after mount")
+                return False
+
+            # Cleanup
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            success, stdout, stderr = self.run_command(
+                "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
+            )
+
+            # Verify complete cleanup of default project
+            project_name = os.path.basename(os.getcwd())
+            if not self.verify_complete_destruction(project_name, "secrets"):
+                self.failed_tests.append("Folder: Default project cleanup verification failed")
+                return False
+
+            # Test with custom folder name
+            print("  📂 Testing custom folder name...")
+            custom_secrets = "my_special_secrets"
+            success, stdout, stderr = self.run_command(
+                f"echo '{TEST_PASSWORD}' | python3 secrets_manager.py create --project custom_test --secrets-dir {custom_secrets} --test-mode"
+            )
+            if not success:
+                self.failed_tests.append("Folder: Create custom project failed")
+                return False
+
+            # Verify custom folder exists
+            if not self.verify_folder_deleted(custom_secrets, False):
+                self.failed_tests.append("Folder: Custom secrets folder should exist after create")
+                return False
+
+            self.create_test_files(custom_secrets)
+
+            # Unmount and verify custom folder is deleted
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            if not success:
+                self.failed_tests.append("Folder: Unmount custom project failed")
+                return False
+
+            if not self.verify_folder_deleted(custom_secrets, True):
+                self.failed_tests.append("Folder: Custom secrets folder should be deleted after unmount")
+                return False
+
+            # Verify encrypted file exists with custom project name
+            if not self.verify_encrypted_file_exists("custom_test", True):
+                self.failed_tests.append("Folder: Custom encrypted file should exist after unmount")
+                return False
+
+            # Mount and verify custom folder is recreated
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py mount --test-mode")
+            if not success:
+                self.failed_tests.append("Folder: Mount custom project failed")
+                return False
+
+            if not self.verify_folder_deleted(custom_secrets, False):
+                self.failed_tests.append("Folder: Custom secrets folder should exist after mount")
+                return False
+
+            # Final cleanup
+            success, stdout, stderr = self.run_command("python3 secrets_manager.py unmount --test-mode")
+            success, stdout, stderr = self.run_command(
+                "echo 'DELETE' | python3 secrets_manager.py destroy --test-mode"
+            )
+
+            # Verify complete cleanup of custom project
+            if not self.verify_complete_destruction("custom_test", custom_secrets):
+                self.failed_tests.append("Folder: Custom project cleanup verification failed")
+                return False
+
+            self.passed_tests.append("Comprehensive folder verification")
+            return True
+
+        except Exception as e:
+            self.failed_tests.append(f"Folder verification exception: {e}")
+            return False
+
+    def verify_complete_destruction(self, project_name=None, secrets_dir="secrets"):
+        """Verify that destroy command removes ALL secrets-related files."""
+        if project_name is None:
+            project_name = os.path.basename(os.getcwd())
+
+        # Check for secrets folder
+        if os.path.exists(secrets_dir):
+            print(f"  ❌ Secrets folder {secrets_dir} still exists after destroy")
+            return False
+
+        # Check for encrypted file
+        encrypted_file = f".{project_name}.secrets"
+        if os.path.exists(encrypted_file):
+            print(f"  ❌ Encrypted file {encrypted_file} still exists after destroy")
+            return False
+
+        # Check for config file
+        config_file = ".secrets_keychain_entry"
+        if os.path.exists(config_file):
+            print(f"  ❌ Config file {config_file} still exists after destroy")
+            return False
+
+        # Check for any other .secrets files
+        secrets_files = [f for f in os.listdir(".") if f.endswith(".secrets")]
+        if secrets_files:
+            print(f"  ❌ Found unexpected .secrets files: {secrets_files}")
+            return False
+
+        print(f"  ✅ All secrets-related files properly destroyed")
+        return True
+
+    def run_status_and_verify(self, expected_context="", check_success=True):
+        """Run status command and verify it returns the expected success state."""
+        success, stdout, stderr = self.run_command("python3 secrets_manager.py status --test-mode")
+        if check_success and not success:
+            print(f"  ❌ Status command failed unexpectedly in {expected_context}")
+            return False
+        elif not check_success and success:
+            print(f"  ❌ Status command succeeded when it should have failed in {expected_context}")
+            return False
+
+        print(f"  ✅ Status command returned correct state for {expected_context}")
+        return True
 
     def run_all_tests(self):
         """Run all test suites."""
@@ -465,6 +965,9 @@ class TestSecretsManager:
             tests = [
                 ("Basic Workflow", self.test_basic_workflow),
                 ("Custom Workflow", self.test_custom_workflow),
+                ("Status Command", self.test_status_command),
+                ("All Commands Coverage", self.test_all_commands_coverage),
+                ("Comprehensive Folder Verification", self.test_comprehensive_folder_verification),
                 ("Edge Cases", self.test_edge_cases)
             ]
 

@@ -16,9 +16,34 @@ try {
     // It will automatically detect the project and retrieve the password from keychain
     $manager = new SecretsManager();
 
+    // Check if secrets exist before proceeding
+    $files = $manager->listFiles();
+    
+    if (empty($files)) {
+        echo "❌ No secrets found!\n\n";
+        echo "📋 This demo requires an encrypted secrets file to exist.\n";
+        echo "   Instead of running this script directly, please use:\n\n";
+        
+        if (PHP_OS_FAMILY === 'Windows' || strpos(strtolower(PHP_OS), 'cygwin') !== false) {
+            echo "   🪟 Windows: demo_php_integration.bat\n";
+        } else {
+            echo "   🐧 Linux/Mac: ./demo_php_integration.sh\n";
+        }
+        
+        echo "\n� The demo script will:\n";
+        echo "   1. Create sample secrets using Python\n";
+        echo "   2. Run this PHP example with real data\n";
+        echo "   3. Clean up afterward\n\n";
+        echo "🔧 Alternatively, create your own secrets:\n";
+        echo "   python secrets_manager.py create\n";
+        echo "   # Add files to secrets/ folder\n";
+        echo "   python secrets_manager.py unmount\n";
+        echo "   php php_example.php\n\n";
+        exit(1);
+    }
+
     // List all available secret files
     echo "📦 Available secret files:\n";
-    $files = $manager->listFiles();
     foreach ($files as $file) {
         echo "   📄 $file\n";
     }
@@ -45,9 +70,22 @@ try {
     echo "---------------------------------\n";
     $configContent = $manager->readSecrets('database_config.json');
     $config = json_decode($configContent, true);
-    echo "   Primary DB: {$config['database']['primary']['host']}:{$config['database']['primary']['port']}\n";
-    echo "   Replica DB: {$config['database']['replica']['host']}:{$config['database']['replica']['port']}\n";
-    echo "   Cache: {$config['cache']['redis']['host']}:{$config['cache']['redis']['port']}\n";
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        echo "   Error parsing JSON: " . json_last_error_msg() . "\n";
+    } else {
+        // Check for expected structure and provide fallbacks
+        $primaryHost = isset($config['database']['primary']['host']) ? $config['database']['primary']['host'] : 'unknown';
+        $primaryPort = isset($config['database']['primary']['port']) ? $config['database']['primary']['port'] : 'unknown';
+        $replicaHost = isset($config['database']['replica']['host']) ? $config['database']['replica']['host'] : 'unknown';
+        $replicaPort = isset($config['database']['replica']['port']) ? $config['database']['replica']['port'] : 'unknown';
+        $cacheHost = isset($config['cache']['redis']['host']) ? $config['cache']['redis']['host'] : 'unknown';
+        $cachePort = isset($config['cache']['redis']['port']) ? $config['cache']['redis']['port'] : 'unknown';
+        
+        echo "   Primary DB: {$primaryHost}:{$primaryPort}\n";
+        echo "   Replica DB: {$replicaHost}:{$replicaPort}\n";
+        echo "   Cache: {$cacheHost}:{$cachePort}\n";
+    }
     echo "\n";
 
     // Demo 3: Read certificate file

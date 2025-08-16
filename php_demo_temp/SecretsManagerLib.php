@@ -389,16 +389,16 @@ class SecretsManager {
             // Write PowerShell script to temp file
             $script = $this->buildWindowsCredentialScript();
             $tempFile = $this->writeTempPowerShellScript($script);
-
+            
             try {
                 $powershellBinary = $this->findPowerShellBinary();
-
+                
                 $descriptors = [
                     0 => ['pipe', 'r'], // stdin
                     1 => ['pipe', 'w'], // stdout
                     2 => ['pipe', 'w'], // stderr
                 ];
-
+                
                 // Build command for different PHP environments
                 if (PHP_OS === 'CYGWIN') {
                     // For Cygwin PHP, convert path to Windows format for PowerShell
@@ -414,61 +414,61 @@ class SecretsManager {
                         $targetName
                     ];
                 }
-
+                
                 $process = proc_open($cmd, $descriptors, $pipes, null, null, [
                     'bypass_shell' => (PHP_OS !== 'CYGWIN'), // Don't bypass shell on Cygwin
                     'create_process_group' => true,
                 ]);
-
+                
                 if (!is_resource($process)) {
                     return null;
                 }
-
+                
                 // Close stdin
                 fclose($pipes[0]);
-
+                
                 // Read output with timeout
                 stream_set_blocking($pipes[1], false);
                 stream_set_blocking($pipes[2], false);
-
+                
                 $stdout = '';
                 $stderr = '';
                 $deadline = microtime(true) + 5.0; // 5 second timeout
-
+                
                 while (microtime(true) < $deadline) {
                     $status = proc_get_status($process);
                     $stdout .= stream_get_contents($pipes[1]) ?: '';
                     $stderr .= stream_get_contents($pipes[2]) ?: '';
-
+                    
                     if (!$status['running']) {
                         break;
                     }
                     usleep(10000); // 10ms
                 }
-
+                
                 // Final read
                 $stdout .= stream_get_contents($pipes[1]) ?: '';
                 $stderr .= stream_get_contents($pipes[2]) ?: '';
-
+                
                 fclose($pipes[1]);
                 fclose($pipes[2]);
-
+                
                 $exitCode = proc_close($process);
-
+                
                 // On Windows, proc_close might return -1 even for successful operations
                 // Check if we have valid output instead of relying solely on exit code
                 $output = trim($stdout);
                 if (!empty($output) && !preg_match('/error|failed|exception/i', $stderr)) {
                     return $output;
                 }
-
+                
                 return null;
-
+                
             } finally {
                 // Clean up temp file
                 $this->cleanupTempScript($tempFile);
             }
-
+            
         } catch (Exception $e) {
             error_log("Windows credential retrieval failed: " . $e->getMessage());
             return null;
@@ -557,13 +557,13 @@ PS1;
             getenv('SystemRoot') . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
             'powershell.exe',
         ];
-
+        
         foreach ($candidates as $bin) {
             if ($bin && is_file($bin) && is_readable($bin)) {
                 return $bin;
             }
         }
-
+        
         return 'powershell.exe'; // Fallback
     }
 
@@ -583,13 +583,13 @@ PS1;
         } else {
             $tempDir = sys_get_temp_dir();
         }
-
+        
         $tempFile = $tempDir . DIRECTORY_SEPARATOR . 'wincred_' . uniqid() . '.ps1';
-
+        
         if (file_put_contents($tempFile, $script, LOCK_EX) === false) {
             throw new Exception("Failed to write temporary PowerShell script: $tempFile");
         }
-
+        
         return $tempFile;
     }
 
@@ -615,19 +615,19 @@ PS1;
             $path = isset($matches[2]) ? str_replace('/', '\\', $matches[2]) : '';
             return $drive . ':' . $path;
         }
-
+        
         // Handle /tmp as a special case - map to Windows temp
         if (strpos($cygwinPath, '/tmp/') === 0) {
             $tempDir = getenv('TEMP') ?: getenv('TMP') ?: 'C:\\temp';
             $relativePath = substr($cygwinPath, 5); // Remove /tmp/
             return $tempDir . '\\' . str_replace('/', '\\', $relativePath);
         }
-
+        
         // If it starts with C:\ or similar, it's already a Windows path
         if (preg_match('#^[A-Z]:[/\\\\]#i', $cygwinPath)) {
             return str_replace('/', '\\', $cygwinPath);
         }
-
+        
         // If not a cygdrive path, assume it's already Windows-compatible or relative
         return str_replace('/', '\\', $cygwinPath);
     }

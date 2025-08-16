@@ -1,6 +1,6 @@
 # Cross-Platform Secrets Manager
 
-**Version 1.0.6**
+**Version 1.0.7**
 
 A secure, portable secrets management tool that works identically across macOS, Windows, and Linux. Never commit unencrypted secrets to git again!
 
@@ -22,6 +22,8 @@ This software is provided "as is", without warranty of any kind, express or impl
 - **⚡ Change Detection**: Prevents git pollution by only re-encrypting when files actually change
 - **🛡️ Defensive Programming**: Robust error handling and secure cleanup
 - **📦 Zero Dependencies**: Single Python script using only standard library
+- **🌐 PHP Integration**: Selective per-file access to secrets without wholesale decryption
+- **🚀 Production-Ready**: PHP library works in web hosting, containers, and CI/CD environments
 
 ## 🚀 Concept
 
@@ -75,6 +77,10 @@ Of course, there are commands to manage various aspects of the system. Read on..
 - [Team Workflows](#-team-workflows)
 - [Security](#-security)
 - [PHP Web Development](#-php-web-development)
+  - [Key Advantage: Selective File Access](#-key-advantage-selective-file-access)
+  - [Workflow: Python Manages, PHP Consumes](#-workflow-python-manages-php-consumes)
+  - [Cross-Platform Credential Integration](#-security-best-practices-for-web-apps)
+  - [Production Deployment Patterns](#-production-deployment-patterns)
 - [Platform-Specific Notes](#-platform-specific-notes)
 - [Testing](#-testing)
 - [Troubleshooting](#-troubleshooting)
@@ -112,6 +118,12 @@ git commit -m "Add encrypted secrets"
 
 # 7. Verify everything works (optional)
 ./test_secrets_manager.sh             # Run comprehensive tests
+
+# 8. For PHP web development - add SecretsManagerLib.php
+cp SecretsManagerLib.php /path/to/your/webapp/
+# In your PHP application:
+# $secrets = new SecretsManager();
+# $envVars = $secrets->readEnvFile('.env');
 ```
 
 *Windows:*
@@ -141,6 +153,12 @@ secrets_manager.bat destroy
 
 REM 7. Verify everything works (optional)
 test_secrets_manager.bat
+
+REM 8. For PHP web development - add SecretsManagerLib.php
+copy SecretsManagerLib.php \path\to\your\webapp\
+REM In your PHP application:
+REM $secrets = new SecretsManager();
+REM $envVars = $secrets->readEnvFile('.env');
 ```
 
 **Manual Python Execution (if you prefer direct control):**
@@ -576,9 +594,39 @@ git commit -m "Security reset - new secrets generated"
 
 ## 🌐 PHP Web Development
 
-For PHP developers building web applications, this tool provides seamless secrets management without the complexity of dedicated secrets services. The PHP library integrates directly with your web applications to securely access encrypted secrets.
+For PHP developers building web applications, this tool provides seamless secrets management without the complexity of dedicated secrets services. **The PHP library offers selective, per-file access to encrypted secrets without requiring full decryption of the entire secrets folder** - perfect for production web environments where you only need specific configuration files.
 
-### Quick Setup for PHP Projects
+### 🎯 Key Advantage: Selective File Access
+
+Unlike the Python tool which mounts/unmounts the entire secrets folder, **SecretsManagerLib.php allows you to read individual files from the encrypted secrets package on-demand**:
+
+- ✅ **Read only what you need**: Access `.env`, specific config files, or certificates individually
+- ✅ **No temporary folders**: Files are decrypted directly into memory, never written to disk
+- ✅ **Production-safe**: No need to mount/unmount secrets folders in live web environments
+- ✅ **Automatic password retrieval**: Integrates with OS credential stores (Keychain, Credential Manager, Linux encrypted files)
+- ✅ **Cross-platform**: Works identically on shared hosting, VPS, containers, and local development
+
+### 🔄 Workflow: Python Manages, PHP Consumes
+
+**Python tool (secrets_manager.py)** - Used for secrets management:
+```bash
+# Developers and deployment scripts use Python for management
+python secrets_manager.py create     # Set up secrets store
+python secrets_manager.py mount      # Edit secrets during development
+python secrets_manager.py unmount    # Encrypt for deployment
+python secrets_manager.py change-password  # Security operations
+```
+
+**PHP library (SecretsManagerLib.php)** - Used by web applications:
+```php
+// Web applications use PHP for selective reading
+$secrets = new SecretsManager();
+$envVars = $secrets->readEnvFile('.env');           // Read just .env
+$dbConfig = $secrets->readSecrets('database.json'); // Read just database config
+$cert = $secrets->readSecrets('ssl/cert.pem');      // Read just SSL certificate
+```
+
+### 📋 Quick Setup for PHP Projects
 
 1. **Install the PHP library** in your project:
 ```bash
@@ -612,7 +660,47 @@ SecretsManagerLib.php      # PHP library
 
 ### Web Application Integration
 
-#### Basic Integration
+The SecretsManagerLib.php provides several key methods for selective access:
+
+#### Core Methods for Selective Access
+```php
+<?php
+require_once 'SecretsManagerLib.php';
+
+$secrets = new SecretsManager();
+
+// Method 1: Read specific files individually (memory-only, no temp files)
+$envContent = $secrets->readSecrets('.env');           // Just the .env file
+$dbConfig = $secrets->readSecrets('database.json');   // Just database config
+$sslCert = $secrets->readSecrets('ssl/cert.pem');     // Just SSL certificate
+
+// Method 2: Parse .env files automatically
+$envVars = $secrets->readEnvFile('.env');             // Returns array of KEY=VALUE pairs
+
+// Method 3: List available files (for debugging/validation)
+$allFiles = $secrets->listFiles();                    // See what's available
+
+// Method 4: Check if specific files exist
+$hasEnv = $secrets->fileExists('.env');               // Boolean check
+?>
+```
+
+#### Why Selective Access Matters for Web Applications
+
+**Traditional approach problems:**
+- ❌ Mount entire secrets folder to disk (security risk)
+- ❌ All secrets exposed if compromised
+- ❌ Requires file system access and cleanup
+- ❌ Not suitable for shared hosting environments
+
+**SecretsManagerLib.php advantages:**
+- ✅ **Memory-only decryption**: Files never touch the disk
+- ✅ **Principle of least privilege**: Only decrypt what you need
+- ✅ **Production-safe**: No temporary folders or cleanup required
+- ✅ **Hosting-friendly**: Works on shared hosting without shell access
+- ✅ **Performance-optimized**: Decrypt only the files your application uses
+
+#### Basic Integration Examples
 ```php
 <?php
 require_once 'SecretsManagerLib.php';
@@ -854,7 +942,18 @@ function getSecretsWithCache(): array
 
 ### Security Best Practices for Web Apps
 
-1. **Never expose secrets in error messages**:
+1. **Automatic password retrieval from OS credential stores**:
+```php
+// The library automatically retrieves passwords from:
+// - macOS: Keychain Access
+// - Windows: Credential Manager (via PowerShell and Win32 API)
+// - Linux: Encrypted files in user home directory
+
+$secrets = new SecretsManager(); // No password needed - retrieved automatically
+$config = $secrets->readEnvFile('.env');
+```
+
+2. **Never expose secrets in error messages**:
 ```php
 try {
     $secrets = new SecretsManager();
@@ -896,7 +995,33 @@ chmod 644 SecretsManagerLib.php
 
 ### Demo and Testing
 
-Try the complete PHP integration demo:
+The project includes a comprehensive demonstration showing the complete Python-to-PHP workflow:
+
+```bash
+# Run the complete PHP integration demo (creates secrets, reads with PHP, cleans up)
+./demo_php_integration.sh     # Unix/Linux/macOS
+demo_php_integration.bat      # Windows
+```
+
+**This demo demonstrates all key PHP capabilities:**
+- ✅ **Automatic password retrieval** from OS credential stores (no manual prompts)
+- ✅ **Selective file access** - reads only requested files from encrypted package
+- ✅ **Multiple file types** - .env, JSON, certificates, documentation, binary files
+- ✅ **Environment variable parsing** - built-in .env file processing
+- ✅ **Cross-platform compatibility** - Windows, macOS, Linux credential store integration
+- ✅ **Memory-only decryption** - no temporary files created on disk
+- ✅ **Production workflow** - Python manages secrets, PHP consumes them safely
+
+**Demo output shows practical usage patterns:**
+```
+🌍 Demo 1: Environment Variables (.env files)
+⚙️  Demo 2: Database Configuration (JSON files)
+🔐 Demo 3: SSL Certificate (binary/PEM files)
+📚 Demo 4: API Documentation (text/markdown files)
+📊 Demo 5: Secrets Metadata (package information)
+```
+
+**For manual testing of PHP functionality:**
 ```bash
 # Run the full demo (creates secrets, reads with PHP, cleans up)
 ./demo_php_integration.sh
@@ -939,6 +1064,7 @@ chcp 65001
 - Windows uses `python.exe`, not `python3.exe`
 - Command Prompt has limited Unicode support - use PowerShell or Windows Terminal
 - Credentials are stored using Windows Credential Management API
+- **PHP Windows Support**: SecretsManagerLib.php automatically integrates with Windows Credential Manager using PowerShell and Win32 API for seamless password retrieval
 - May need to run as Administrator for some operations
 
 ### Linux

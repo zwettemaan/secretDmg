@@ -257,8 +257,7 @@ REM Or clone the repository
 git clone https://github.com/zwettemaan/secretDmg.git
 cd secretDmg
 
-REM Set UTF-8 encoding and verify installation
-chcp 65001
+REM Verify installation
 python test_secrets_manager.py
 ```
 
@@ -1269,8 +1268,7 @@ REM Note: Credential deletion is handled automatically by the script
 
 **Testing on Windows**
 ```cmd
-REM Try to enable UTF-8 encoding before running tests
-chcp 65001
+REM Run tests
 python test_secrets_manager.py
 
 REM Or use PowerShell (better Unicode support)

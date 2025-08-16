@@ -25,8 +25,9 @@ class SecretsManager {
      * @param string $password Password for decryption (optional, will prompt if not provided)
      */
     public function __construct($projectDir = null, $password = null) {
-        $this->projectName = $this->detectProjectName($projectDir ?: getcwd());
-        $this->secretsFile = ($projectDir ?: getcwd()) . '/.' . $this->projectName . '.secrets';
+        $this->projectDir = $projectDir ?: getcwd();
+        $this->projectName = $this->detectProjectName($this->projectDir);
+        $this->secretsFile = $this->projectDir . '/.' . $this->projectName . '.secrets';
         $this->password = $password;
         $this->package = null;
         $this->key = null;
@@ -129,16 +130,8 @@ class SecretsManager {
                 }
 
             } elseif ($os === 'windows') {
-                // Windows - use PowerShell to access Windows Credential Manager
-                $command = sprintf(
-                    'powershell -Command "try { $cred = Get-StoredCredential -Target %s -Type Generic -ErrorAction Stop; [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($cred.Password)) } catch { exit 1 }"',
-                    escapeshellarg($serviceName)
-                );
-
-                $output = shell_exec($command . ' 2>nul');
-                if ($output !== null && trim($output) !== '') {
-                    return trim($output);
-                }
+                // Windows - use PowerShell with Win32 API to access Windows Credential Manager
+                return $this->getWindowsCredential($serviceName);
 
             } else {
                 // Linux - use encrypted file in home directory
@@ -175,7 +168,7 @@ class SecretsManager {
      */
     private function getKeychainEntryName() {
         // Read from .secrets_keychain_entry file like Python implementation
-        $configFile = '.secrets_keychain_entry';
+        $configFile = $this->projectDir . DIRECTORY_SEPARATOR . '.secrets_keychain_entry';
         if (file_exists($configFile)) {
             $lines = file($configFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             if (!empty($lines)) {
@@ -382,6 +375,260 @@ class SecretsManager {
         }
 
         return self::parseEnvContent($content);
+    }
+
+    /**
+     * Get credential from Windows Credential Manager using PowerShell and Win32 API
+     * Based on the wincred-ps library approach
+     * @param string $targetName The credential target name
+     * @return string|null Password if found, null otherwise
+     */
+    private function getWindowsCredential($targetName) {
+        try {
+            // Write PowerShell script to temp file
+            $script = $this->buildWindowsCredentialScript();
+            $tempFile = $this->writeTempPowerShellScript($script);
+            
+            try {
+                $powershellBinary = $this->findPowerShellBinary();
+                
+                $descriptors = [
+                    0 => ['pipe', 'r'], // stdin
+                    1 => ['pipe', 'w'], // stdout
+                    2 => ['pipe', 'w'], // stderr
+                ];
+                
+                // Build command for different PHP environments
+                if (PHP_OS === 'CYGWIN') {
+                    // For Cygwin PHP, convert path to Windows format for PowerShell
+                    $winTempFile = $this->cygwinToWindowsPath($tempFile);
+                    $cmd = escapeshellarg($powershellBinary) . ' -NoProfile -ExecutionPolicy Bypass -File ' . escapeshellarg($winTempFile) . ' ' . escapeshellarg($targetName);
+                } else {
+                    // For other PHP environments, use array format
+                    $cmd = [
+                        $powershellBinary,
+                        '-NoProfile',
+                        '-ExecutionPolicy', 'Bypass',
+                        '-File', $tempFile,
+                        $targetName
+                    ];
+                }
+                
+                $process = proc_open($cmd, $descriptors, $pipes, null, null, [
+                    'bypass_shell' => (PHP_OS !== 'CYGWIN'), // Don't bypass shell on Cygwin
+                    'create_process_group' => true,
+                ]);
+                
+                if (!is_resource($process)) {
+                    return null;
+                }
+                
+                // Close stdin
+                fclose($pipes[0]);
+                
+                // Read output with timeout
+                stream_set_blocking($pipes[1], false);
+                stream_set_blocking($pipes[2], false);
+                
+                $stdout = '';
+                $stderr = '';
+                $deadline = microtime(true) + 5.0; // 5 second timeout
+                
+                while (microtime(true) < $deadline) {
+                    $status = proc_get_status($process);
+                    $stdout .= stream_get_contents($pipes[1]) ?: '';
+                    $stderr .= stream_get_contents($pipes[2]) ?: '';
+                    
+                    if (!$status['running']) {
+                        break;
+                    }
+                    usleep(10000); // 10ms
+                }
+                
+                // Final read
+                $stdout .= stream_get_contents($pipes[1]) ?: '';
+                $stderr .= stream_get_contents($pipes[2]) ?: '';
+                
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                
+                $exitCode = proc_close($process);
+                
+                // On Windows, proc_close might return -1 even for successful operations
+                // Check if we have valid output instead of relying solely on exit code
+                $output = trim($stdout);
+                if (!empty($output) && !preg_match('/error|failed|exception/i', $stderr)) {
+                    return $output;
+                }
+                
+                return null;
+                
+            } finally {
+                // Clean up temp file
+                $this->cleanupTempScript($tempFile);
+            }
+            
+        } catch (Exception $e) {
+            error_log("Windows credential retrieval failed: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Build PowerShell script for reading Windows credentials
+     * Based on wincred-ps approach using Win32 API
+     * @return string PowerShell script
+     */
+    private function buildWindowsCredentialScript() {
+        return <<<'PS1'
+param()
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+public static class CredMan {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  public struct CREDENTIAL {
+    public uint Flags;
+    public uint Type;
+    public string TargetName;
+    public string Comment;
+    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+    public uint CredentialBlobSize;
+    public IntPtr CredentialBlob;
+    public uint Persist;
+    public uint AttributeCount;
+    public IntPtr Attributes;
+    public string TargetAlias;
+    public string UserName;
+  }
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  public static extern bool CredRead(string target, uint type, uint flags, out IntPtr pCredential);
+  [DllImport("Advapi32.dll", SetLastError=true)]
+  public static extern void CredFree(IntPtr cred);
+}
+"@
+
+if ($args.Count -lt 1) { [Console]::Error.WriteLine("Usage: read_cred.ps1 -- <TargetName>"); exit 2 }
+$Target = [string]$args[0]
+if ([string]::IsNullOrWhiteSpace($Target)) { [Console]::Error.WriteLine("Target name must be non-empty"); exit 2 }
+
+$ptr = [IntPtr]::Zero
+if (-not [CredMan]::CredRead($Target, 1, 0, [ref]$ptr)) {
+  $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  [Console]::Error.WriteLine("CredRead failed ($code) for target: $Target")
+  exit 3
+}
+try {
+  $cred = [Runtime.InteropServices.Marshal]::PtrToStructure($ptr, [type][CredMan+CREDENTIAL])
+  $size = [int]$cred.CredentialBlobSize
+  $bytes = New-Object byte[] $size
+  if ($size -gt 0) {
+    [Runtime.InteropServices.Marshal]::Copy($cred.CredentialBlob, $bytes, 0, $size)
+    # Try UTF-8 first since that's what the Python implementation uses
+    $utf8_secret = [Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0)
+    # Check if UTF-8 produces reasonable result (no control chars except null)
+    if ($utf8_secret -match '^[^\x00-\x08\x0E-\x1F\x7F-\x9F]*$' -and $utf8_secret.Length -gt 0) {
+      [Console]::WriteLine($utf8_secret)
+    } else {
+      # Fallback to UTF-16
+      $utf16_secret = [Text.Encoding]::Unicode.GetString($bytes).TrimEnd([char]0)
+      [Console]::WriteLine($utf16_secret)
+    }
+  } else {
+    [Console]::WriteLine("")
+  }
+} finally {
+  if ($ptr -ne [IntPtr]::Zero) { [CredMan]::CredFree($ptr) }
+}
+PS1;
+    }
+
+    /**
+     * Find PowerShell binary, preferring pwsh over Windows PowerShell
+     * @return string Path to PowerShell executable
+     */
+    private function findPowerShellBinary() {
+        $candidates = [
+            'pwsh.exe',
+            getenv('ProgramFiles') . '\\PowerShell\\7\\pwsh.exe',
+            getenv('ProgramFiles(x86)') . '\\PowerShell\\7\\pwsh.exe',
+            getenv('SystemRoot') . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+            'powershell.exe',
+        ];
+        
+        foreach ($candidates as $bin) {
+            if ($bin && is_file($bin) && is_readable($bin)) {
+                return $bin;
+            }
+        }
+        
+        return 'powershell.exe'; // Fallback
+    }
+
+    /**
+     * Write PowerShell script to a temporary file
+     * @param string $script PowerShell script content
+     * @return string Path to the temporary file
+     */
+    private function writeTempPowerShellScript($script) {
+        // For Cygwin, use Windows temp directory to avoid path conversion issues
+        if (PHP_OS === 'CYGWIN') {
+            // Use Windows %TEMP% directory
+            $tempDir = getenv('TEMP') ?: getenv('TMP') ?: 'C:\\temp';
+            if (!is_dir($tempDir)) {
+                @mkdir($tempDir, 0755, true);
+            }
+        } else {
+            $tempDir = sys_get_temp_dir();
+        }
+        
+        $tempFile = $tempDir . DIRECTORY_SEPARATOR . 'wincred_' . uniqid() . '.ps1';
+        
+        if (file_put_contents($tempFile, $script, LOCK_EX) === false) {
+            throw new Exception("Failed to write temporary PowerShell script: $tempFile");
+        }
+        
+        return $tempFile;
+    }
+
+    /**
+     * Clean up temporary PowerShell script file
+     * @param string $filePath Path to the temporary file
+     */
+    private function cleanupTempScript($filePath) {
+        if (is_file($filePath)) {
+            @unlink($filePath);
+        }
+    }
+
+    /**
+     * Convert Cygwin path to Windows path for PowerShell
+     * @param string $cygwinPath Cygwin-style path
+     * @return string Windows-style path
+     */
+    private function cygwinToWindowsPath($cygwinPath) {
+        // Convert /cygdrive/c/... to C:\...
+        if (preg_match('#^/cygdrive/([a-z])(/.*)?$#i', $cygwinPath, $matches)) {
+            $drive = strtoupper($matches[1]);
+            $path = isset($matches[2]) ? str_replace('/', '\\', $matches[2]) : '';
+            return $drive . ':' . $path;
+        }
+        
+        // Handle /tmp as a special case - map to Windows temp
+        if (strpos($cygwinPath, '/tmp/') === 0) {
+            $tempDir = getenv('TEMP') ?: getenv('TMP') ?: 'C:\\temp';
+            $relativePath = substr($cygwinPath, 5); // Remove /tmp/
+            return $tempDir . '\\' . str_replace('/', '\\', $relativePath);
+        }
+        
+        // If it starts with C:\ or similar, it's already a Windows path
+        if (preg_match('#^[A-Z]:[/\\\\]#i', $cygwinPath)) {
+            return str_replace('/', '\\', $cygwinPath);
+        }
+        
+        // If not a cygdrive path, assume it's already Windows-compatible or relative
+        return str_replace('/', '\\', $cygwinPath);
     }
 }
 

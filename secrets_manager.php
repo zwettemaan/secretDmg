@@ -710,7 +710,7 @@ class SecretsManagerCLI {
             } elseif ($os === 'windows') {
                 // Windows - simplified credential storage
                 $command = sprintf(
-                    'cmdkey /generic:%s /user:%s /pass:%s 2>nul',
+                    'cmdkey /generic:%s /user:%s /pass:%s 2>NUL',
                     escapeshellarg($serviceName),
                     escapeshellarg($this->getCurrentUser()),
                     escapeshellarg($password)
@@ -796,7 +796,7 @@ class SecretsManagerCLI {
                     escapeshellarg($serviceName)
                 );
 
-                $result = shell_exec($command . ' 2>nul');
+                $result = shell_exec($command . ' 2>NUL');
                 return $result !== null;
 
             } else {
@@ -841,7 +841,7 @@ class SecretsManagerCLI {
                     escapeshellarg($serviceName)
                 );
 
-                $result = shell_exec($command . ' 2>nul');
+                $result = shell_exec($command . ' 2>NUL');
                 return trim($result) === 'True';
 
             } else {

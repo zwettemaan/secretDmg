@@ -13,19 +13,19 @@ NC='\033[0m' # No Color
 
 # Function to print colored messages
 print_error() {
-    echo -e "${RED}❌ Error: $1${NC}" >&2
+    echo -e "${RED}Error: $1${NC}" >&2
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}$1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  Warning: $1${NC}"
+    echo -e "${YELLOW}Warning: $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  Info: $1${NC}"
+    echo -e "${BLUE}Info: $1${NC}"
 }
 
 # Function to check if a command exists
@@ -87,7 +87,7 @@ provide_installation_guidance() {
     # Detect OS and provide specific guidance
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        echo "📱 macOS Installation Options:"
+        echo "macOS Installation Options:"
         echo "  1. Homebrew (recommended):"
         echo "     brew install python3"
         echo
@@ -99,7 +99,7 @@ provide_installation_guidance() {
 
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         # Linux
-        echo "🐧 Linux Installation Options:"
+        echo "Linux Installation Options:"
         if command_exists apt-get; then
             echo "  Ubuntu/Debian:"
             echo "    sudo apt-get update && sudo apt-get install python3 python3-pip"
@@ -118,10 +118,10 @@ provide_installation_guidance() {
 
     elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
         # Windows (Git Bash/Cygwin)
-        echo "🪟 Windows Installation Options:"
+        echo "Windows Installation Options:"
         echo "  1. Official installer (recommended):"
         echo "     Download from https://www.python.org/downloads/"
-        echo "     ⚠️  Make sure to check 'Add Python to PATH' during installation"
+        echo "     Make sure to check 'Add Python to PATH' during installation"
         echo
         echo "  2. Microsoft Store:"
         echo "     Search for 'Python 3' in Microsoft Store"
@@ -130,7 +130,7 @@ provide_installation_guidance() {
         echo "     choco install python3"
 
     else
-        echo "🌐 General Installation:"
+        echo "General Installation:"
         echo "  Download Python from https://www.python.org/downloads/"
     fi
 

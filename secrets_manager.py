@@ -8,7 +8,7 @@ SIMPLE WORKFLOW:
    - Creates empty 'secrets' folder (fails if .projectname.secrets already exists)
 2. Add your secret files to 'secrets' folder
 3. Run: python secrets_manager.py unmount
-   - Encrypts 'secrets' folder → .projectname.secrets
+   - Encrypts 'secrets' folder -> .projectname.secrets
    - Deletes 'secrets' folder
 4. Run: python secrets_manager.py mount
    - Decrypts .projectname.secrets into 'secrets' folder
@@ -43,44 +43,22 @@ import secrets as secure_random
 def is_windows():
     return platform.system() == "Windows"
 
-# Emoji/named symbol constants for consistent use throughout the script
-# Use Windows-compatible alternatives when needed
-if is_windows():
-    # Windows-compatible symbols (avoid problematic Unicode ranges)
-    TICK_MARK      = "[OK]"
-    CROSS_MARK     = "[ERROR]"
-    INFO_MARK      = "[INFO]"
-    KEY_MARK       = "[KEY]"
-    WARNING_MARK   = "[WARNING]"
-    FOLDER_MARK    = "[FOLDER]"
-    LIGHTBULB_MARK = "[TIP]"
-    LOCK_MARK      = "[LOCKED]"
-    UNLOCK_MARK    = "[UNLOCKED]"
-    FILE_MARK      = "[FILE]"
-    DISK_MARK      = "[DISK]"
-    CHECK_MARK     = "[CHECK]"
-    DOT_MARK       = "*"
-    SWEEP_MARK     = "[CLEAN]"
-    ROCKET_MARK    = "[PROJECT]"
-    RECYCLE_MARK   = "[CYCLE]"
-else:
-    # Unicode emoji for macOS/Linux
-    TICK_MARK      = "\u2705"
-    CROSS_MARK     = "\u274c"
-    INFO_MARK      = "\u2139\ufe0f"
-    KEY_MARK       = "\U0001F511"
-    WARNING_MARK   = "\u26A0\uFE0F"
-    FOLDER_MARK    = "\U0001F4C1"
-    LIGHTBULB_MARK = "\U0001F4A1"
-    LOCK_MARK      = "\U0001F512"
-    UNLOCK_MARK    = "\U0001F513"
-    FILE_MARK      = "\U0001F4C2"
-    DISK_MARK      = "\U0001F4BE"
-    CHECK_MARK     = "\u2714"
-    DOT_MARK       = "\u2022"
-    SWEEP_MARK     = "\U0001F9F9"
-    ROCKET_MARK    = "\U0001F680"
-    RECYCLE_MARK   = "\U0001F504"
+TICK_MARK      = "[OK]"
+CROSS_MARK     = "[ERROR]"
+INFO_MARK      = "[INFO]"
+KEY_MARK       = "[KEY]"
+WARNING_MARK   = "[WARNING]"
+FOLDER_MARK    = "[FOLDER]"
+LIGHTBULB_MARK = "[TIP]"
+LOCK_MARK      = "[LOCKED]"
+UNLOCK_MARK    = "[UNLOCKED]"
+FILE_MARK      = "[FILE]"
+DISK_MARK      = "[DISK]"
+CHECK_MARK     = "[CHECK]"
+DOT_MARK       = "*"
+SWEEP_MARK     = "[CLEAN]"
+ROCKET_MARK    = "[PROJECT]"
+RECYCLE_MARK   = "[CYCLE]"
 
 # Global variable to track test mode
 _TEST_MODE = False
@@ -187,9 +165,14 @@ if platform.system() == "Windows":
         except Exception:
             return False
 
-def get_password_input(prompt: str, test_password: str = None) -> str:
-    """Get password input - uses test_password if provided, otherwise from stdin in test mode, getpass otherwise."""
+def get_password_input(prompt: str, test_password: str = None, provided_password: str = None) -> str:
+    """Get password input - uses provided_password if given, test_password if provided, otherwise from stdin in test mode, getpass otherwise."""
     global _TEST_MODE
+
+    # If provided password is given, use it (suppresses prompts)
+    if provided_password is not None:
+        print(prompt + "(using provided password)")
+        return provided_password
 
     # If test password is provided, use it immediately
     if test_password is not None:
@@ -280,7 +263,7 @@ def auto_detect_project_config() -> Dict[str, str]:
 class SecretsManager:
     """Cross-platform secrets manager with defensive programming patterns."""
 
-    VERSION = "1.0.4"
+    VERSION = "1.1.0"  # Updated to support file/directory ownership and permissions
     CHUNK_SIZE = 64 * 1024  # 64KB chunks for file operations
     HASH_FILE = "secrets_manager.hash"
 
@@ -408,10 +391,14 @@ class SecretsManager:
             # Check if secrets folder already exists
             if os.path.exists(self.secrets_dir):
                 print(f"{TICK_MARK} Found existing {self.secrets_dir}/ folder")
-                response = get_confirmation_input("Encrypt existing folder contents? (y/n): ", True).lower()
-                if response != 'y' and response != 'yes':
-                    print(f"{CROSS_MARK} Cannot create - secrets folder exists but not encrypting")
-                    break
+
+                # If password is provided via command line, assume non-interactive mode
+                if not password:
+                    response = get_confirmation_input("Encrypt existing folder contents? (y/n): ", True).lower()
+                    if response != 'y' and response != 'yes':
+                        print(f"{CROSS_MARK} Cannot create - secrets folder exists but not encrypting")
+                        break
+                # else: auto-confirm when password provided (non-interactive mode)
 
                 # Get password for encryption
                 if not password:
@@ -721,7 +708,7 @@ class SecretsManager:
         self.logger.info(f"EXIT: store_password, returning: {ret_val}")
         return ret_val
 
-    def mount_secrets(self) -> bool:
+    def mount_secrets(self, provided_password: str = None) -> bool:
         """Mount secrets - decrypt .projectname.secrets to secrets folder."""
         ret_val = False
         self.logger.info("ENTRY: mount_secrets")
@@ -749,7 +736,7 @@ class SecretsManager:
             password = self._get_password()
             if not password:
                 print(f"{INFO_MARK}  No stored password found for project '{self.project_name}'")
-                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None)
+                password = get_password_input(f"Enter password for project '{self.project_name}': ", TEST_PASSWORD if _TEST_MODE else None, provided_password)
                 if not password:
                     print(f"{CROSS_MARK} Password required to decrypt secrets")
                     break
@@ -774,12 +761,34 @@ class SecretsManager:
                 self._secure_directory(self.secrets_dir)
                 self._add_to_gitignore(f"{self.secrets_dir}/")
 
+                # Restore directory metadata if available (v1.1.0+)
+                directories_metadata = package.get("directories", {})
+                if directories_metadata:
+                    print(f"{FOLDER_MARK} Restoring directory structure and metadata...")
+                    # Sort directories by depth to create them in the right order
+                    sorted_dirs = sorted(directories_metadata.keys(), key=lambda x: len(Path(x).parts))
+                    for relative_path_str in sorted_dirs:
+                        if relative_path_str == ".":
+                            # Restore root secrets directory metadata
+                            dir_path = Path(self.secrets_dir)
+                        else:
+                            # Restore subdirectory
+                            # Path() automatically handles forward slashes on all platforms
+                            dir_path = Path(self.secrets_dir) / relative_path_str
+                            os.makedirs(dir_path, exist_ok=True)
+
+                        # Restore directory metadata
+                        dir_meta = directories_metadata[relative_path_str]
+                        self._restore_file_metadata(dir_path, dir_meta)
+
                 file_count = len(package["files"])
                 if file_count > 0:
                     print(f"{FILE_MARK} Extracting {file_count} files...")
 
                 # Extract and decrypt files
                 for relative_path, file_info in package["files"].items():
+                    # Note: relative_path uses forward slashes (/) regardless of source platform
+                    # os.path.join() and Path() handle this correctly on all platforms
                     full_path = os.path.join(self.secrets_dir, relative_path)
 
                     # Create parent directories
@@ -799,13 +808,24 @@ class SecretsManager:
                     with open(full_path, 'wb') as f:
                         f.write(decrypted_content)
 
-                    # Set permissions (Unix-like systems)
-                    if self.platform != "windows" and "permissions" in file_info:
-                        try:
-                            perms = int(file_info["permissions"], 8)
-                            os.chmod(full_path, perms)
-                        except:
-                            pass
+                    # Restore file metadata (new format with uid/gid support)
+                    if "uid" in file_info or "gid" in file_info:
+                        # New format (v1.1.0+): restore full metadata
+                        file_metadata = {
+                            "permissions": file_info.get("permissions", "644"),
+                            "uid": file_info.get("uid"),
+                            "gid": file_info.get("gid"),
+                            "is_dir": False
+                        }
+                        self._restore_file_metadata(Path(full_path), file_metadata)
+                    elif "permissions" in file_info:
+                        # Old format (v1.0.x): only permissions available
+                        if self.platform != "windows":
+                            try:
+                                perms = int(file_info["permissions"], 8)
+                                os.chmod(full_path, perms)
+                            except:
+                                pass
 
                     print(f"  {CHECK_MARK} {relative_path}")
 
@@ -820,14 +840,21 @@ class SecretsManager:
                 if current_hash:
                     self._store_secrets_hash(current_hash)
 
-                # Offer to store password if it wasn't stored before
+                # Store password if it wasn't stored before
                 if not self._has_stored_password():
-                    response = get_confirmation_input(f"\n{DISK_MARK} Store password in credential store for future use? (y/n): ", True).lower()
-                    if response == 'y' or response == 'yes':
+                    # Auto-store if password was provided via command line, otherwise ask
+                    if provided_password is not None:
                         if self._store_password(password):
                             print(f"{TICK_MARK} Password stored in credential store")
                         else:
                             print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
+                    else:
+                        response = get_confirmation_input(f"\n{DISK_MARK} Store password in credential store for future use? (y/n): ", True).lower()
+                        if response == 'y' or response == 'yes':
+                            if self._store_password(password):
+                                print(f"{TICK_MARK} Password stored in credential store")
+                            else:
+                                print(f"{WARNING_MARK}  Warning: Could not store password in credential store")
 
             except Exception as e:
                 print(f"{CROSS_MARK} Failed to mount secrets: {e}")
@@ -839,7 +866,7 @@ class SecretsManager:
         self.logger.info(f"EXIT: mount_secrets, returning: {ret_val}")
         return ret_val
 
-    def unmount_secrets(self) -> bool:
+    def unmount_secrets(self, provided_password: str = None) -> bool:
         """Unmount secrets - encrypt secrets folder to .projectname.secrets and delete folder."""
         ret_val = False
         self.logger.info("ENTRY: unmount_secrets")
@@ -860,7 +887,7 @@ class SecretsManager:
                 else:
                     # No encrypted file exists, so this is a fresh setup - ask for password
                     password = get_password_input(f"Enter password for project '{self.project_name}': ",
-                                                TEST_PASSWORD if _TEST_MODE else None)
+                                                TEST_PASSWORD if _TEST_MODE else None, provided_password)
                     if not password:
                         break
 
@@ -915,6 +942,20 @@ class SecretsManager:
                     "salt": base64.b64encode(salt).decode('utf-8')
                 }
 
+                # Collect directory metadata (in order from root to deepest)
+                # Start with the secrets directory itself
+                directories_metadata = {}
+                root_metadata = self._get_file_metadata(secrets_path)
+                directories_metadata["."] = root_metadata
+
+                # Then collect subdirectories
+                all_dirs = sorted([d for d in secrets_path.rglob('*') if d.is_dir()], key=lambda x: len(x.parts))
+                for dir_path in all_dirs:
+                    relative_path = dir_path.relative_to(secrets_path)
+                    dir_metadata = self._get_file_metadata(dir_path)
+                    # Always use forward slashes in the JSON file for cross-platform compatibility
+                    directories_metadata[relative_path.as_posix()] = dir_metadata
+
                 # Collect and encrypt all files (excluding hash file)
                 file_data = {}
 
@@ -930,15 +971,22 @@ class SecretsManager:
                         print(f"{CROSS_MARK} Failed to encrypt file: {relative_path}")
                         break
 
-                    file_data[str(relative_path)] = {
+                    # Get file metadata
+                    file_metadata = self._get_file_metadata(file_path)
+
+                    # Always use forward slashes in the JSON file for cross-platform compatibility
+                    file_data[relative_path.as_posix()] = {
                         "content": base64.b64encode(encrypted_content).decode('utf-8'),
-                        "permissions": oct(file_path.stat().st_mode)[-3:] if self.platform != "windows" else "644"
+                        "permissions": file_metadata["permissions"],
+                        "uid": file_metadata.get("uid"),
+                        "gid": file_metadata.get("gid")
                     }
                     print(f"  {CHECK_MARK} {relative_path}")
 
                 # Create the secrets package
                 package = {
                     "metadata": metadata,
+                    "directories": directories_metadata,
                     "files": file_data
                 }
 
@@ -1122,8 +1170,29 @@ class SecretsManager:
             os.makedirs(self.secrets_dir, exist_ok=True)
             self._secure_directory(self.secrets_dir)
 
+            # Restore directory metadata if available (v1.1.0+)
+            directories_metadata = package.get("directories", {})
+            if directories_metadata:
+                # Sort directories by depth to create them in the right order
+                sorted_dirs = sorted(directories_metadata.keys(), key=lambda x: len(Path(x).parts))
+                for relative_path_str in sorted_dirs:
+                    if relative_path_str == ".":
+                        # Restore root secrets directory metadata
+                        dir_path = Path(self.secrets_dir)
+                    else:
+                        # Restore subdirectory
+                        # Path() automatically handles forward slashes on all platforms
+                        dir_path = Path(self.secrets_dir) / relative_path_str
+                        os.makedirs(dir_path, exist_ok=True)
+
+                    # Restore directory metadata
+                    dir_meta = directories_metadata[relative_path_str]
+                    self._restore_file_metadata(dir_path, dir_meta)
+
             # Extract and decrypt files
             for relative_path, file_info in package["files"].items():
+                # Note: relative_path uses forward slashes (/) regardless of source platform
+                # os.path.join() and Path() handle this correctly on all platforms
                 full_path = os.path.join(self.secrets_dir, relative_path)
 
                 # Create parent directories
@@ -1140,13 +1209,24 @@ class SecretsManager:
                 with open(full_path, 'wb') as f:
                     f.write(decrypted_content)
 
-                # Set permissions
-                if self.platform != "windows" and "permissions" in file_info:
-                    try:
-                        perms = int(file_info["permissions"], 8)
-                        os.chmod(full_path, perms)
-                    except:
-                        pass
+                # Restore file metadata (new format with uid/gid support)
+                if "uid" in file_info or "gid" in file_info:
+                    # New format (v1.1.0+): restore full metadata
+                    file_metadata = {
+                        "permissions": file_info.get("permissions", "644"),
+                        "uid": file_info.get("uid"),
+                        "gid": file_info.get("gid"),
+                        "is_dir": False
+                    }
+                    self._restore_file_metadata(Path(full_path), file_metadata)
+                elif "permissions" in file_info:
+                    # Old format (v1.0.x): only permissions available
+                    if self.platform != "windows":
+                        try:
+                            perms = int(file_info["permissions"], 8)
+                            os.chmod(full_path, perms)
+                        except:
+                            pass
 
             return True
 
@@ -1177,6 +1257,20 @@ class SecretsManager:
                 "salt": base64.b64encode(salt).decode('utf-8')
             }
 
+            # Collect directory metadata (in order from root to deepest)
+            # Start with the secrets directory itself
+            directories_metadata = {}
+            root_metadata = self._get_file_metadata(secrets_path)
+            directories_metadata["."] = root_metadata
+
+            # Then collect subdirectories
+            all_dirs = sorted([d for d in secrets_path.rglob('*') if d.is_dir()], key=lambda x: len(x.parts))
+            for dir_path in all_dirs:
+                relative_path = dir_path.relative_to(secrets_path)
+                dir_metadata = self._get_file_metadata(dir_path)
+                # Always use forward slashes in the JSON file for cross-platform compatibility
+                directories_metadata[relative_path.as_posix()] = dir_metadata
+
             # Collect and encrypt all files
             file_data = {}
 
@@ -1191,14 +1285,21 @@ class SecretsManager:
                 if not encrypted_content:
                     return False
 
-                file_data[str(relative_path)] = {
+                # Get file metadata
+                file_metadata = self._get_file_metadata(file_path)
+
+                # Always use forward slashes in the JSON file for cross-platform compatibility
+                file_data[relative_path.as_posix()] = {
                     "content": base64.b64encode(encrypted_content).decode('utf-8'),
-                    "permissions": oct(file_path.stat().st_mode)[-3:] if self.platform != "windows" else "644"
+                    "permissions": file_metadata["permissions"],
+                    "uid": file_metadata.get("uid"),
+                    "gid": file_metadata.get("gid")
                 }
 
             # Create the secrets package
             package = {
                 "metadata": metadata,
+                "directories": directories_metadata,
                 "files": file_data
             }
 
@@ -1246,7 +1347,7 @@ class SecretsManager:
         if not os.path.exists(self.secrets_dir):
             return
 
-        print(f"📋 Files in {self.secrets_dir}/:")
+        print(f"Files in {self.secrets_dir}/:")
 
         # Show files in a helpful way
         file_found = False
@@ -1254,7 +1355,7 @@ class SecretsManager:
             for file in files:
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, self.secrets_dir)
-                print(f"   • {rel_path}")
+                print(f"   - {rel_path}")
                 file_found = True
 
                 # Show helpful suggestions for common file types
@@ -1496,6 +1597,79 @@ class SecretsManager:
             except:
                 pass
 
+    def _get_file_metadata(self, file_path: Path) -> Dict[str, Any]:
+        """Get file or directory metadata including permissions, owner, and group.
+
+        Returns a dict with:
+        - permissions: octal string (e.g., '644')
+        - uid: user ID (Unix-like only)
+        - gid: group ID (Unix-like only)
+        - is_dir: boolean indicating if this is a directory
+        """
+        metadata = {
+            "is_dir": file_path.is_dir()
+        }
+
+        try:
+            stat_info = file_path.stat()
+
+            if self.platform != "windows":
+                # Unix-like systems: capture full permissions, uid, and gid
+                metadata["permissions"] = oct(stat_info.st_mode)[-3:]
+                metadata["uid"] = stat_info.st_uid
+                metadata["gid"] = stat_info.st_gid
+            else:
+                # Windows: just store a default permission string
+                metadata["permissions"] = "644" if not file_path.is_dir() else "755"
+
+        except Exception as e:
+            self.logger.warning(f"Could not get metadata for {file_path}: {e}")
+            # Fallback to defaults
+            metadata["permissions"] = "644" if not file_path.is_dir() else "755"
+
+        return metadata
+
+    def _restore_file_metadata(self, file_path: Path, metadata: Dict[str, Any]) -> bool:
+        """Restore file or directory metadata including permissions, owner, and group.
+
+        Args:
+            file_path: Path to the file or directory
+            metadata: Dictionary containing permissions, uid, gid from _get_file_metadata
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.platform == "windows":
+            # Windows doesn't support Unix permissions/ownership
+            return True
+
+        success = True
+
+        try:
+            # Restore permissions
+            if "permissions" in metadata:
+                try:
+                    perms = int(metadata["permissions"], 8)
+                    os.chmod(file_path, perms)
+                except Exception as e:
+                    self.logger.warning(f"Could not restore permissions for {file_path}: {e}")
+                    success = False
+
+            # Restore owner and group (requires appropriate privileges)
+            if "uid" in metadata and "gid" in metadata:
+                try:
+                    os.chown(file_path, metadata["uid"], metadata["gid"])
+                except Exception as e:
+                    # This commonly fails if not running as root/sudo
+                    self.logger.debug(f"Could not restore ownership for {file_path}: {e}")
+                    # Don't mark as failure since this is often expected
+
+        except Exception as e:
+            self.logger.warning(f"Failed to restore metadata for {file_path}: {e}")
+            success = False
+
+        return success
+
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format."""
         from datetime import datetime, timezone
@@ -1563,7 +1737,7 @@ Examples:
                        help="Project name (only used with 'create' command, default: current folder name)")
     parser.add_argument("--secrets-dir", default="secrets",
                        help="Secrets directory name (only used with 'create' command, default: secrets)")
-    parser.add_argument("--password", help="Password (only used with 'create' and 'pass' commands)")
+    parser.add_argument("--password", help="Password for operations requiring decryption (optional for all commands)")
     parser.add_argument("--test-mode", action="store_true", help="Test mode: read passwords from stdin and auto-confirm prompts")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
@@ -1605,15 +1779,15 @@ Examples:
                 sys.exit(1)
 
         elif args.command == "mount":
-            # Mount doesn't accept any optional parameters
-            if manager.mount_secrets():
+            # Mount now accepts --password parameter
+            if manager.mount_secrets(args.password):
                 sys.exit(0)
             else:
                 sys.exit(1)
 
         elif args.command == "unmount":
-            # Unmount doesn't accept any optional parameters
-            if manager.unmount_secrets():
+            # Unmount now accepts --password parameter
+            if manager.unmount_secrets(args.password):
                 sys.exit(0)
             else:
                 sys.exit(1)
@@ -1653,7 +1827,7 @@ Examples:
             sys.exit(0)
 
     except KeyboardInterrupt:
-        print("\n⚠️  Operation cancelled")
+        print("\nWARNING: Operation cancelled")
         # Try to clean up if mounting was interrupted
         if args.command == "mount" and os.path.exists(manager.secrets_dir):
             shutil.rmtree(manager.secrets_dir, ignore_errors=True)
